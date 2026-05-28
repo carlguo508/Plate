@@ -8,6 +8,9 @@ struct TodayView: View {
     @Query private var todaysWeights: [BodyWeightEntry]
     @State private var showingGoals = false
     @State private var showingWeight = false
+    @State private var showingMealPicker = false
+    @State private var showingMealTypeChoice = false
+    @State private var pendingMealType: MealType = .lunch
     @State private var goalsTick = 0  // forces re-render after goals update
 
     init() {
@@ -45,7 +48,15 @@ struct TodayView: View {
 
                 Section("体重") { weightCard }
                 Section("今日训练") { trainingCard }
-                Section("今日饮食") { nutritionCard }
+                Section("今日饮食") {
+                    nutritionCard
+                    Button {
+                        showingMealTypeChoice = true
+                    } label: {
+                        Label("加食物", systemImage: "plus.circle")
+                            .font(.callout)
+                    }
+                }
                 if !todaysMeals.isEmpty {
                     Section("今天吃的") { mealList }
                 }
@@ -64,8 +75,45 @@ struct TodayView: View {
             .sheet(isPresented: $showingWeight, onDismiss: { goalsTick += 1 }) {
                 WeightLogSheet(existing: todaysWeight)
             }
+            .confirmationDialog("记到哪一餐？", isPresented: $showingMealTypeChoice, titleVisibility: .visible) {
+                ForEach(MealType.allCases, id: \.self) { type in
+                    Button(mealLabel(type)) {
+                        pendingMealType = type
+                        showingMealPicker = true
+                    }
+                }
+            }
+            .sheet(isPresented: $showingMealPicker) {
+                MealItemPickerView { source in
+                    addItem(source, mealType: pendingMealType)
+                }
+            }
         }
         .id(goalsTick)
+    }
+
+    private func addItem(_ source: MealItemSource, mealType: MealType) {
+        let dayStart = Calendar.current.startOfDay(for: .now)
+        let meal: MealEntry
+        if let existing = todaysMeals.first(where: { $0.mealType == mealType }) {
+            meal = existing
+        } else {
+            meal = MealEntry(date: dayStart, mealType: mealType)
+            context.insert(meal)
+        }
+        let item: MealItem
+        switch source {
+        case .recipe(let recipe, let servings):
+            item = MealItem(recipe: recipe, servings: servings)
+        case .ingredientGrams(let ing, let grams):
+            item = MealItem(ingredient: ing, grams: grams)
+        case .ingredientCount(let ing, let count):
+            item = MealItem(ingredient: ing, count: count)
+        }
+        item.meal = meal
+        meal.items.append(item)
+        context.insert(item)
+        try? context.save()
     }
 
     @ViewBuilder

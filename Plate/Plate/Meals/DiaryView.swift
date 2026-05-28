@@ -16,6 +16,38 @@ struct DiaryView: View {
         todaysMeals.first(where: { $0.mealType == type })
     }
 
+    private func yesterdaysMeal(for type: MealType) -> MealEntry? {
+        let cal = Calendar.current
+        guard let yesterday = cal.date(byAdding: .day, value: -1, to: selectedDate) else { return nil }
+        return allMeals.first { cal.isDate($0.date, inSameDayAs: yesterday) && $0.mealType == type }
+    }
+
+    private func copyMeal(_ source: MealEntry, to type: MealType) {
+        let meal: MealEntry
+        if let existing = mealEntry(for: type) {
+            meal = existing
+        } else {
+            meal = MealEntry(date: selectedDate, mealType: type)
+            context.insert(meal)
+        }
+        for srcItem in source.items {
+            let copy: MealItem
+            if let recipe = srcItem.recipe, let servings = srcItem.servings {
+                copy = MealItem(recipe: recipe, servings: servings)
+            } else if let ing = srcItem.ingredient, let grams = srcItem.grams {
+                copy = MealItem(ingredient: ing, grams: grams)
+            } else if let ing = srcItem.ingredient, let count = srcItem.count {
+                copy = MealItem(ingredient: ing, count: count)
+            } else {
+                continue
+            }
+            copy.meal = meal
+            meal.items.append(copy)
+            context.insert(copy)
+        }
+        try? context.save()
+    }
+
     private var dailyTotals: (kcal: Double, p: Double, c: Double, f: Double) {
         todaysMeals.reduce((0, 0, 0, 0)) { acc, meal in
             (acc.0 + meal.totalCalories, acc.1 + meal.totalProtein, acc.2 + meal.totalCarbs, acc.3 + meal.totalFat)
@@ -116,6 +148,16 @@ struct DiaryView: View {
             } label: {
                 Label("加食物", systemImage: "plus.circle")
                     .font(.callout)
+            }
+            if mealEntry(for: type)?.items.isEmpty ?? true,
+               let yesterday = yesterdaysMeal(for: type), !yesterday.items.isEmpty {
+                Button {
+                    copyMeal(yesterday, to: type)
+                } label: {
+                    Label("复制昨天（\(yesterday.items.count) 项）", systemImage: "doc.on.doc")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
             }
         } header: {
             HStack {

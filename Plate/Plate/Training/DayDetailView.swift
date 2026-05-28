@@ -151,11 +151,30 @@ private struct StrengthLogSheet: View {
         })
     }
 
+    @Query(sort: \WorkoutEntry.date, order: .reverse) private var allWorkouts: [WorkoutEntry]
+
     private var workout: WorkoutEntry? { workouts.first }
+
+    /// Most recent strength session strictly before this day — the source for "repeat last".
+    private var previousStrength: WorkoutEntry? {
+        let dayStart = Calendar.current.startOfDay(for: date)
+        return allWorkouts.first { $0.kind == .strength && $0.date < dayStart && !$0.sets.isEmpty }
+    }
 
     var body: some View {
         NavigationStack {
             Form {
+                if (workout?.sets.isEmpty ?? true), let prev = previousStrength {
+                    Section {
+                        Button {
+                            repeatWorkout(prev)
+                        } label: {
+                            Label("复制上次力量训练（\(distinctExerciseCount(prev)) 个动作）", systemImage: "arrow.clockwise")
+                        }
+                    } footer: {
+                        Text("载入上次每个动作 + 当时的重量/次数，你再微调。")
+                    }
+                }
                 if let workout {
                     Section("已记录的组") {
                         ForEach(workout.sets.sorted(by: { $0.order < $1.order })) { set in
@@ -202,6 +221,33 @@ private struct StrengthLogSheet: View {
         !exerciseName.trimmingCharacters(in: .whitespaces).isEmpty
             && (Double(weightText) ?? -1) >= 0
             && (Int(repsText) ?? 0) > 0
+    }
+
+    private func distinctExerciseCount(_ w: WorkoutEntry) -> Int {
+        Set(w.sets.map(\.exerciseName)).count
+    }
+
+    /// Copy each set from a prior workout into today's, preserving exercise order and weight/reps.
+    private func repeatWorkout(_ source: WorkoutEntry) {
+        let entry: WorkoutEntry
+        if let existing = workout {
+            entry = existing
+        } else {
+            entry = WorkoutEntry.strength(date: date)
+            context.insert(entry)
+        }
+        for srcSet in source.sets.sorted(by: { $0.order < $1.order }) {
+            let copy = ExerciseSet(
+                exerciseName: srcSet.exerciseName,
+                weightKg: srcSet.weightKg,
+                reps: srcSet.reps,
+                order: entry.sets.count
+            )
+            copy.workout = entry
+            entry.sets.append(copy)
+            context.insert(copy)
+        }
+        try? context.save()
     }
 
     private func addSet() {
