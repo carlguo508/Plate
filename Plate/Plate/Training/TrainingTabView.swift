@@ -32,15 +32,22 @@ struct TrainingTabView: View {
                             )
                         }
                     }
+                    .onMove(perform: swapDays)
+                } footer: {
+                    Text("点右上角「调整」拖动两天来对调训练类型。")
+                        .font(.caption2)
                 }
             }
             .navigationTitle("训练")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    EditButton()
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingTemplate = true
                     } label: {
-                        Image(systemName: "calendar.badge.clock")
+                        Image(systemName: "gearshape")
                     }
                 }
             }
@@ -52,6 +59,19 @@ struct TrainingTabView: View {
 
     private func dateForDay(_ day: DayPlan) -> Date {
         WeekPlanService.date(forDay: day.dayIndex, in: plan)
+    }
+
+    /// Swap strength assignments between two weekdays. The day cells stay anchored to their weekday;
+    /// only the planned strength type moves. Planned cardio is left untouched (it usually ties to a fixed event).
+    private func swapDays(from source: IndexSet, to destination: Int) {
+        let sorted = plan.days.sorted(by: { $0.dayIndex < $1.dayIndex })
+        guard let src = source.first else { return }
+        let dst = destination > src ? destination - 1 : destination
+        guard dst >= 0, dst < sorted.count, dst != src else { return }
+        let tmp = sorted[src].strengthType
+        sorted[src].strengthType = sorted[dst].strengthType
+        sorted[dst].strengthType = tmp
+        try? context.save()
     }
 
     private var weekHeader: some View {
@@ -147,6 +167,7 @@ private struct DayRow: View {
 private struct DefaultTemplateEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var days: [String] = DefaultTemplate.load()
+    @State private var weightUnit: WeightUnit = WeightPreference.current
 
     private let weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
@@ -157,6 +178,14 @@ private struct DefaultTemplateEditor: View {
                     Text("这是你的每周固定计划。每周开始时，app 会以此为底版生成本周排程，你可以随时调整某一周。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                }
+                Section("重量单位") {
+                    Picker("单位", selection: $weightUnit) {
+                        ForEach(WeightUnit.allCases) { unit in
+                            Text(unit.label).tag(unit)
+                        }
+                    }
+                    .pickerStyle(.segmented)
                 }
                 Section("每周训练模板") {
                     ForEach(0..<7, id: \.self) { i in
@@ -178,7 +207,7 @@ private struct DefaultTemplateEditor: View {
                     }
                 }
             }
-            .navigationTitle("默认模板")
+            .navigationTitle("训练设置")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -187,6 +216,7 @@ private struct DefaultTemplateEditor: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") {
                         DefaultTemplate.save(days)
+                        WeightPreference.current = weightUnit
                         dismiss()
                     }
                 }
