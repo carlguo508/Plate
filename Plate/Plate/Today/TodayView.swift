@@ -1,0 +1,256 @@
+import SwiftUI
+import SwiftData
+
+struct TodayView: View {
+    @Environment(\.modelContext) private var context
+    @Query private var todaysMeals: [MealEntry]
+    @Query private var todaysWorkouts: [WorkoutEntry]
+    @State private var showingGoals = false
+    @State private var goalsTick = 0  // forces re-render after goals update
+
+    init() {
+        let dayStart = Calendar.current.startOfDay(for: .now)
+        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? .now
+        _todaysMeals = Query(filter: #Predicate<MealEntry> {
+            $0.date >= dayStart && $0.date < dayEnd
+        })
+        _todaysWorkouts = Query(filter: #Predicate<WorkoutEntry> {
+            $0.date >= dayStart && $0.date < dayEnd
+        })
+    }
+
+    private var totalKcal: Double { todaysMeals.reduce(0) { $0 + $1.totalCalories } }
+    private var totalProtein: Double { todaysMeals.reduce(0) { $0 + $1.totalProtein } }
+
+    private var todaysDayPlan: DayPlan? {
+        let plan = WeekPlanService.planForWeek(of: .now, in: context)
+        let weekday = Calendar.current.component(.weekday, from: .now)
+        // Calendar weekday: 1=Sun, 2=Mon, ... 7=Sat → app dayIndex: 0=Mon..6=Sun
+        let dayIndex = (weekday + 5) % 7
+        return plan.days.first { $0.dayIndex == dayIndex }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section { dateHeader }
+                    .listRowBackground(Color.clear)
+
+                Section("今日训练") { trainingCard }
+                Section("今日饮食") { nutritionCard }
+                if !todaysMeals.isEmpty {
+                    Section("今天吃的") { mealList }
+                }
+            }
+            .navigationTitle("今天")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingGoals = true } label: {
+                        Image(systemName: "target")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingGoals, onDismiss: { goalsTick += 1 }) {
+                GoalsSheet()
+            }
+        }
+        .id(goalsTick)
+    }
+
+    private var dateHeader: some View {
+        Text(Date.now, format: .dateTime.year().month(.wide).day().weekday(.wide))
+            .font(.headline)
+    }
+
+    @ViewBuilder
+    private var trainingCard: some View {
+        if let day = todaysDayPlan {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: "dumbbell")
+                    Text("计划：\(DefaultTemplate.displayLabel(DefaultTemplate.raw(from: day.strengthType)))")
+                        .fontWeight(.semibold)
+                    Spacer()
+                    if !todaysWorkouts.isEmpty {
+                        Label("已完成", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.caption)
+                    }
+                }
+                if let cardio = day.plannedCardio, !cardio.isEmpty {
+                    Label(cardio, systemImage: "figure.run")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                }
+                if let strength = todaysWorkouts.first(where: { $0.kind == .strength }), !strength.sets.isEmpty {
+                    Text("\(strength.sets.count) 组 / \(distinctExercises(strength)) 个动作")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(todaysWorkouts.filter { $0.kind == .cardio }) { cardio in
+                    Text("\(cardio.cardioActivity ?? "") · \(cardio.cardioDurationMinutes ?? 0) 分钟 · \(intensityLabel(cardio.cardioIntensity))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
+        } else {
+            Text("还没生成本周计划")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func distinctExercises(_ workout: WorkoutEntry) -> Int {
+        Set(workout.sets.map(\.exerciseName)).count
+    }
+
+    private func intensityLabel(_ intensity: CardioIntensity?) -> String {
+        switch intensity {
+        case .high: "高强度"
+        case .medium: "中等强度"
+        case .low: "低强度"
+        case .none: "—"
+        }
+    }
+
+    private var nutritionCard: some View {
+        VStack(spacing: 12) {
+            ProgressRow(
+                label: "热量",
+                value: totalKcal,
+                goal: Goals.dailyKcal,
+                unit: "kcal",
+                tint: .orange
+            )
+            ProgressRow(
+                label: "蛋白质",
+                value: totalProtein,
+                goal: Goals.dailyProtein,
+                unit: "g",
+                tint: .blue
+            )
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var mealList: some View {
+        ForEach(todaysMeals.sorted(by: { mealOrder($0.mealType) < mealOrder($1.mealType) })) { meal in
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(mealLabel(meal.mealType)).fontWeight(.medium)
+                    Spacer()
+                    Text("\(NutritionFormat.kcal(meal.totalCalories)) kcal")
+                        .font(.caption)
+                        .monospacedDigit()
+                }
+                ForEach(meal.items) { item in
+                    Text("· \(itemName(item))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func itemName(_ item: MealItem) -> String {
+        item.recipe?.name ?? item.ingredient?.name ?? "—"
+    }
+
+    private func mealOrder(_ type: MealType) -> Int {
+        switch type {
+        case .breakfast: 0
+        case .lunch: 1
+        case .dinner: 2
+        case .snack: 3
+        }
+    }
+
+    private func mealLabel(_ type: MealType) -> String {
+        switch type {
+        case .breakfast: "早餐"
+        case .lunch: "午餐"
+        case .dinner: "晚餐"
+        case .snack: "加餐"
+        }
+    }
+}
+
+private struct ProgressRow: View {
+    let label: String
+    let value: Double
+    let goal: Double
+    let unit: String
+    let tint: Color
+
+    private var ratio: Double { goal > 0 ? min(value / goal, 1.0) : 0 }
+    private var displayValue: Int { Int(value.rounded()) }
+    private var displayGoal: Int { Int(goal.rounded()) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label).font(.subheadline)
+                Spacer()
+                Text("\(displayValue) / \(displayGoal) \(unit)")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            ProgressView(value: ratio)
+                .tint(tint)
+        }
+    }
+}
+
+private struct GoalsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var kcalText: String = String(Int(Goals.dailyKcal))
+    @State private var proteinText: String = String(Int(Goals.dailyProtein))
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("每天的目标摄入。可以根据增肌/减脂目标随时调整。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Section("每日目标") {
+                    HStack {
+                        Text("热量")
+                        Spacer()
+                        TextField("kcal", text: $kcalText)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                        Text("kcal").foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("蛋白质")
+                        Spacer()
+                        TextField("g", text: $proteinText)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                        Text("g").foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("每日目标")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        if let k = Double(kcalText), k > 0 { Goals.dailyKcal = k }
+                        if let p = Double(proteinText), p > 0 { Goals.dailyProtein = p }
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
