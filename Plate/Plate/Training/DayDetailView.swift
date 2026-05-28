@@ -54,7 +54,7 @@ struct DayDetailView: View {
                         HStack {
                             Text(set.exerciseName)
                             Spacer()
-                            Text("\(NutritionFormat.kcal(set.weightKg)) kg × \(set.reps)")
+                            Text("\(WeightConvert.formatted(set.weightKg, in: WeightPreference.current)) \(WeightPreference.current.label) × \(set.reps)")
                                 .font(.caption)
                                 .monospacedDigit()
                         }
@@ -162,7 +162,7 @@ private struct StrengthLogSheet: View {
                             HStack {
                                 Text(set.exerciseName)
                                 Spacer()
-                                Text("\(NutritionFormat.kcal(set.weightKg)) kg × \(set.reps)")
+                                Text("\(WeightConvert.formatted(set.weightKg, in: WeightPreference.current)) \(WeightPreference.current.label) × \(set.reps)")
                                     .monospacedDigit()
                             }
                         }
@@ -173,7 +173,7 @@ private struct StrengthLogSheet: View {
                     HStack {
                         TextField("重量", text: $weightText)
                             .keyboardType(.decimalPad)
-                        Text("kg").foregroundStyle(.secondary)
+                        Text(WeightPreference.current.label).foregroundStyle(.secondary)
                         TextField("次数", text: $repsText)
                             .keyboardType(.numberPad)
                         Text("reps").foregroundStyle(.secondary)
@@ -207,9 +207,11 @@ private struct StrengthLogSheet: View {
             context.insert(entry)
         }
         let order = entry.sets.count
+        let input = Double(weightText) ?? 0
+        let kg = WeightConvert.toKg(input, from: WeightPreference.current)
         let set = ExerciseSet(
             exerciseName: exerciseName.trimmingCharacters(in: .whitespaces),
-            weightKg: Double(weightText) ?? 0,
+            weightKg: kg,
             reps: Int(repsText) ?? 0,
             order: order
         )
