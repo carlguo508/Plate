@@ -8,6 +8,8 @@ struct ContentView: View {
                 .tabItem { Label("菜谱", systemImage: "fork.knife") }
             DiaryView()
                 .tabItem { Label("饮食", systemImage: "book.pages") }
+            TrainingTabView()
+                .tabItem { Label("训练", systemImage: "dumbbell") }
         }
     }
 }
