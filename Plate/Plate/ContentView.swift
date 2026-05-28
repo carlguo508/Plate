@@ -26,5 +26,6 @@ struct ContentView: View {
             MealEntry.self, MealItem.self,
             WorkoutEntry.self, ExerciseSet.self,
             WeeklyPlan.self, DayPlan.self,
+            BodyWeightEntry.self,
         ], inMemory: true)
 }

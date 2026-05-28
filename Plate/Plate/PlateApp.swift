@@ -15,6 +15,7 @@ struct PlateApp: App {
             ExerciseSet.self,
             WeeklyPlan.self,
             DayPlan.self,
+            BodyWeightEntry.self,
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {

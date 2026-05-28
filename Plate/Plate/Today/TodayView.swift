@@ -5,7 +5,9 @@ struct TodayView: View {
     @Environment(\.modelContext) private var context
     @Query private var todaysMeals: [MealEntry]
     @Query private var todaysWorkouts: [WorkoutEntry]
+    @Query private var todaysWeights: [BodyWeightEntry]
     @State private var showingGoals = false
+    @State private var showingWeight = false
     @State private var goalsTick = 0  // forces re-render after goals update
 
     init() {
@@ -17,7 +19,12 @@ struct TodayView: View {
         _todaysWorkouts = Query(filter: #Predicate<WorkoutEntry> {
             $0.date >= dayStart && $0.date < dayEnd
         })
+        _todaysWeights = Query(filter: #Predicate<BodyWeightEntry> {
+            $0.date >= dayStart && $0.date < dayEnd
+        })
     }
+
+    private var todaysWeight: BodyWeightEntry? { todaysWeights.first }
 
     private var totalKcal: Double { todaysMeals.reduce(0) { $0 + $1.totalCalories } }
     private var totalProtein: Double { todaysMeals.reduce(0) { $0 + $1.totalProtein } }
@@ -36,6 +43,7 @@ struct TodayView: View {
                 Section { dateHeader }
                     .listRowBackground(Color.clear)
 
+                Section("体重") { weightCard }
                 Section("今日训练") { trainingCard }
                 Section("今日饮食") { nutritionCard }
                 if !todaysMeals.isEmpty {
@@ -53,8 +61,33 @@ struct TodayView: View {
             .sheet(isPresented: $showingGoals, onDismiss: { goalsTick += 1 }) {
                 GoalsSheet()
             }
+            .sheet(isPresented: $showingWeight, onDismiss: { goalsTick += 1 }) {
+                WeightLogSheet(existing: todaysWeight)
+            }
         }
         .id(goalsTick)
+    }
+
+    @ViewBuilder
+    private var weightCard: some View {
+        Button {
+            showingWeight = true
+        } label: {
+            HStack {
+                if let w = todaysWeight {
+                    Text("\(WeightConvert.formatted(w.weightKg, in: WeightPreference.current)) \(WeightPreference.current.label)")
+                        .font(.title3).fontWeight(.semibold)
+                    Text("今日已记").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("记录今日体重")
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "scalemass")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private var dateHeader: some View {
@@ -252,5 +285,55 @@ private struct GoalsSheet: View {
                 }
             }
         }
+    }
+}
+
+private struct WeightLogSheet: View {
+    let existing: BodyWeightEntry?
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @State private var weightText: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("今日体重") {
+                    HStack {
+                        TextField("体重", text: $weightText)
+                            .keyboardType(.decimalPad)
+                        Text(WeightPreference.current.label).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("记录体重")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                if weightText.isEmpty, let existing {
+                    weightText = WeightConvert.formatted(existing.weightKg, in: WeightPreference.current)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") { save() }
+                        .disabled((Double(weightText) ?? 0) <= 0)
+                }
+            }
+        }
+    }
+
+    private func save() {
+        guard let input = Double(weightText), input > 0 else { return }
+        let kg = WeightConvert.toKg(input, from: WeightPreference.current)
+        if let existing {
+            existing.weightKg = kg
+        } else {
+            let entry = BodyWeightEntry(date: .now, weightKg: kg)
+            context.insert(entry)
+        }
+        try? context.save()
+        dismiss()
     }
 }
