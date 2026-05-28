@@ -169,6 +169,12 @@ private struct StrengthLogSheet: View {
                     }
                 }
                 Section("加一组") {
+                    SuggestionChips(
+                        suggestions: SuggestionService.strengthExercises(in: context),
+                        selected: exerciseName
+                    ) { picked in
+                        exerciseName = picked
+                    }
                     TextField("动作（如 卧推）", text: $exerciseName)
                     HStack {
                         TextField("重量", text: $weightText)
@@ -241,6 +247,12 @@ private struct CardioLogSheet: View {
         NavigationStack {
             Form {
                 Section {
+                    SuggestionChips(
+                        suggestions: SuggestionService.cardioActivities(in: context),
+                        selected: activity
+                    ) { picked in
+                        activity = picked
+                    }
                     TextField("项目（如 篮球）", text: $activity)
                     HStack {
                         TextField("时长", text: $minutesText)
@@ -278,6 +290,41 @@ private struct CardioLogSheet: View {
                         || (Int(minutesText) ?? 0) <= 0)
                 }
             }
+        }
+    }
+}
+
+// MARK: - Suggestion chips
+
+private struct SuggestionChips: View {
+    let suggestions: [String]
+    let selected: String
+    let onTap: (String) -> Void
+
+    var body: some View {
+        if suggestions.isEmpty {
+            EmptyView()
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(suggestions, id: \.self) { item in
+                        Button {
+                            onTap(item)
+                        } label: {
+                            Text(item)
+                                .font(.caption)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(item == selected ? Color.accentColor : Color(.tertiarySystemBackground))
+                                .foregroundStyle(item == selected ? .white : .primary)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
         }
     }
 }
