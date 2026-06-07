@@ -6,6 +6,8 @@ struct TodayView: View {
     @Query private var todaysMeals: [MealEntry]
     @Query private var todaysWorkouts: [WorkoutEntry]
     @Query private var todaysWeights: [BodyWeightEntry]
+    @Query(sort: \MealEntry.date, order: .reverse) private var allMeals: [MealEntry]
+    @Query(sort: \BodyWeightEntry.date, order: .reverse) private var allWeights: [BodyWeightEntry]
     @State private var showingGoals = false
     @State private var showingWeight = false
     @State private var showingMealPicker = false
@@ -32,6 +34,22 @@ struct TodayView: View {
     private var totalKcal: Double { todaysMeals.reduce(0) { $0 + $1.totalCalories } }
     private var totalProtein: Double { todaysMeals.reduce(0) { $0 + $1.totalProtein } }
 
+    private var latestPriorWeight: BodyWeightEntry? {
+        let today = Calendar.current.startOfDay(for: .now)
+        return allWeights.first { $0.date < today }
+    }
+
+    private var copyableYesterdayMeals: [MealEntry] {
+        let calendar = Calendar.current
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: .now) else { return [] }
+        let recordedTypes = Set(todaysMeals.map(\.mealType))
+        return allMeals.filter {
+            calendar.isDate($0.date, inSameDayAs: yesterday)
+                && !recordedTypes.contains($0.mealType)
+                && !$0.items.isEmpty
+        }
+    }
+
     private var todaysDayPlan: DayPlan? {
         let plan = WeekPlanService.planForWeek(of: .now, in: context)
         let weekday = Calendar.current.component(.weekday, from: .now)
@@ -56,6 +74,18 @@ struct TodayView: View {
                         Label("加食物", systemImage: "plus.circle")
                             .font(.callout)
                     }
+                    if !copyableYesterdayMeals.isEmpty {
+                        Button {
+                            copyYesterdayMeals()
+                        } label: {
+                            Label(
+                                "复制昨天未记录的餐（\(copyableYesterdayMeals.count) 餐）",
+                                systemImage: "doc.on.doc"
+                            )
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 if !todaysMeals.isEmpty {
                     Section("今天吃的") { mealList }
@@ -73,7 +103,7 @@ struct TodayView: View {
                 GoalsSheet()
             }
             .sheet(isPresented: $showingWeight, onDismiss: { goalsTick += 1 }) {
-                WeightLogSheet(existing: todaysWeight)
+                WeightLogSheet(existing: todaysWeight, suggested: latestPriorWeight)
             }
             .confirmationDialog("记到哪一餐？", isPresented: $showingMealTypeChoice, titleVisibility: .visible) {
                 ForEach(MealType.allCases, id: \.self) { type in
@@ -116,26 +146,53 @@ struct TodayView: View {
         try? context.save()
     }
 
+    private func copyYesterdayMeals() {
+        let today = Calendar.current.startOfDay(for: .now)
+        for sourceMeal in copyableYesterdayMeals {
+            MealCopyService.copy(sourceMeal, to: today, in: context)
+        }
+        try? context.save()
+    }
+
     @ViewBuilder
     private var weightCard: some View {
-        Button {
-            showingWeight = true
-        } label: {
-            HStack {
+        HStack {
+            Button {
+                showingWeight = true
+            } label: {
                 if let w = todaysWeight {
-                    Text("\(WeightConvert.formatted(w.weightKg, in: WeightPreference.current)) \(WeightPreference.current.label)")
-                        .font(.title3).fontWeight(.semibold)
-                    Text("今日已记").font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        Text("\(WeightConvert.formatted(w.weightKg, in: WeightPreference.current)) \(WeightPreference.current.label)")
+                            .font(.title3).fontWeight(.semibold)
+                        Text("今日已记").font(.caption).foregroundStyle(.secondary)
+                    }
                 } else {
                     Text("记录今日体重")
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            if todaysWeight == nil, let latestPriorWeight {
+                Button {
+                    reuseWeight(latestPriorWeight)
+                } label: {
+                    Text("沿用 \(WeightConvert.formatted(latestPriorWeight.weightKg, in: WeightPreference.current))")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else {
                 Image(systemName: "scalemass")
                     .foregroundStyle(.secondary)
             }
         }
-        .buttonStyle(.plain)
+    }
+
+    private func reuseWeight(_ source: BodyWeightEntry) {
+        context.insert(BodyWeightEntry(date: .now, weightKg: source.weightKg))
+        try? context.save()
     }
 
     private var dateHeader: some View {
@@ -146,35 +203,40 @@ struct TodayView: View {
     @ViewBuilder
     private var trainingCard: some View {
         if let day = todaysDayPlan {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Image(systemName: "dumbbell")
-                    Text("计划：\(DefaultTemplate.displayLabel(DefaultTemplate.raw(from: day.strengthType)))")
-                        .fontWeight(.semibold)
-                    Spacer()
-                    if !todaysWorkouts.isEmpty {
-                        Label("已完成", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+            NavigationLink {
+                DayDetailView(day: day, planDate: Calendar.current.startOfDay(for: .now))
+            } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Image(systemName: "dumbbell")
+                        Text("计划：\(DefaultTemplate.displayLabel(DefaultTemplate.raw(from: day.strengthType)))")
+                            .fontWeight(.semibold)
+                        Spacer()
+                        if !todaysWorkouts.isEmpty {
+                            Label("已完成", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .font(.caption)
+                        }
+                    }
+                    if let cardio = day.plannedCardio, !cardio.isEmpty {
+                        Label(cardio, systemImage: "figure.run")
                             .font(.caption)
+                            .foregroundStyle(.blue)
+                    }
+                    if let strength = todaysWorkouts.first(where: { $0.kind == .strength }), !strength.sets.isEmpty {
+                        Text("\(strength.sets.count) 组 / \(distinctExercises(strength)) 个动作")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(todaysWorkouts.filter { $0.kind == .cardio }) { cardio in
+                        Text("\(cardio.cardioActivity ?? "") · \(cardio.cardioDurationMinutes ?? 0) 分钟 · \(intensityLabel(cardio.cardioIntensity))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                if let cardio = day.plannedCardio, !cardio.isEmpty {
-                    Label(cardio, systemImage: "figure.run")
-                        .font(.caption)
-                        .foregroundStyle(.blue)
-                }
-                if let strength = todaysWorkouts.first(where: { $0.kind == .strength }), !strength.sets.isEmpty {
-                    Text("\(strength.sets.count) 组 / \(distinctExercises(strength)) 个动作")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(todaysWorkouts.filter { $0.kind == .cardio }) { cardio in
-                    Text("\(cardio.cardioActivity ?? "") · \(cardio.cardioDurationMinutes ?? 0) 分钟 · \(intensityLabel(cardio.cardioIntensity))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                .padding(.vertical, 4)
             }
-            .padding(.vertical, 4)
+            .buttonStyle(.plain)
         } else {
             Text("还没生成本周计划")
                 .foregroundStyle(.secondary)
@@ -338,9 +400,12 @@ private struct GoalsSheet: View {
 
 private struct WeightLogSheet: View {
     let existing: BodyWeightEntry?
+    let suggested: BodyWeightEntry?
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @State private var weightText: String = ""
+
+    private var unit: WeightUnit { WeightPreference.current }
 
     var body: some View {
         NavigationStack {
@@ -349,7 +414,28 @@ private struct WeightLogSheet: View {
                     HStack {
                         TextField("体重", text: $weightText)
                             .keyboardType(.decimalPad)
-                        Text(WeightPreference.current.label).foregroundStyle(.secondary)
+                            .font(.title2)
+                            .monospacedDigit()
+                        Text(unit.label).foregroundStyle(.secondary)
+                    }
+                    HStack(spacing: 12) {
+                        adjustButton(systemName: "minus", delta: -0.1)
+                        adjustButton(systemName: "plus", delta: 0.1)
+                    }
+                }
+                if existing == nil, let suggested {
+                    Section {
+                        Button {
+                            weightText = WeightConvert.formatted(suggested.weightKg, in: unit)
+                            save()
+                        } label: {
+                            Label(
+                                "沿用上次 \(WeightConvert.formatted(suggested.weightKg, in: unit)) \(unit.label)",
+                                systemImage: "arrow.uturn.backward.circle"
+                            )
+                        }
+                    } footer: {
+                        Text("体重没明显变化时，一次点击即可完成记录。")
                     }
                 }
             }
@@ -357,7 +443,9 @@ private struct WeightLogSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 if weightText.isEmpty, let existing {
-                    weightText = WeightConvert.formatted(existing.weightKg, in: WeightPreference.current)
+                    weightText = WeightConvert.formatted(existing.weightKg, in: unit)
+                } else if weightText.isEmpty, let suggested {
+                    weightText = WeightConvert.formatted(suggested.weightKg, in: unit)
                 }
             }
             .toolbar {
@@ -372,9 +460,21 @@ private struct WeightLogSheet: View {
         }
     }
 
+    private func adjustButton(systemName: String, delta: Double) -> some View {
+        Button {
+            let current = Double(weightText) ?? 0
+            weightText = String(format: "%.1f", max(0, current + delta))
+        } label: {
+            Image(systemName: systemName)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+        }
+        .buttonStyle(.bordered)
+    }
+
     private func save() {
         guard let input = Double(weightText), input > 0 else { return }
-        let kg = WeightConvert.toKg(input, from: WeightPreference.current)
+        let kg = WeightConvert.toKg(input, from: unit)
         if let existing {
             existing.weightKg = kg
         } else {

@@ -102,6 +102,39 @@ struct ModelTests {
         #expect(abs(meal.totalCalories - expected) < 0.1)
     }
 
+    @Test func mealCopyPreservesAllSupportedItemQuantities() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+
+        let egg = Ingredient(
+            name: "鸡蛋", category: .protein,
+            caloriesPer100g: 144, proteinPer100g: 13, carbsPer100g: 0.7, fatPer100g: 9,
+            defaultUnitGrams: 50
+        )
+        let rice = Ingredient(
+            name: "白米饭", category: .grain,
+            caloriesPer100g: 116, proteinPer100g: 2.6, carbsPer100g: 25.6, fatPer100g: 0.3
+        )
+        let recipe = Recipe(name: "蛋炒饭", servings: 2)
+        recipe.ingredients.append(RecipeIngredient(ingredient: egg, count: 2))
+
+        let source = MealEntry(date: .now, mealType: .lunch)
+        source.items.append(MealItem(recipe: recipe, servings: 1.5))
+        source.items.append(MealItem(ingredient: rice, grams: 180))
+        source.items.append(MealItem(ingredient: egg, count: 1))
+        ctx.insert(source)
+
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: source.date)!
+        let copied = MealCopyService.copy(source, to: tomorrow, in: ctx)
+        try ctx.save()
+
+        #expect(copied.mealType == .lunch)
+        #expect(copied.items.count == 3)
+        #expect(copied.items.contains { $0.recipe === recipe && $0.servings == 1.5 })
+        #expect(copied.items.contains { $0.ingredient === rice && $0.grams == 180 })
+        #expect(copied.items.contains { $0.ingredient === egg && $0.count == 1 })
+    }
+
     // MARK: - Workout
 
     @Test func strengthWorkoutTracksSets() throws {
