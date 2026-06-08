@@ -9,11 +9,17 @@ enum WeightUnit: String, CaseIterable, Identifiable {
 /// User's preferred weight unit. Storage is always in kilograms; this only affects display and input.
 enum WeightPreference {
     private static let key = "training.weightUnit"
+    private static let kgDefaultMigrationKey = "training.weightUnit.defaultedToKg"
 
     static var current: WeightUnit {
         get {
-            guard let raw = UserDefaults.standard.string(forKey: key) else { return .lb }
-            return WeightUnit(rawValue: raw) ?? .lb
+            if !UserDefaults.standard.bool(forKey: kgDefaultMigrationKey) {
+                UserDefaults.standard.set(WeightUnit.kg.rawValue, forKey: key)
+                UserDefaults.standard.set(true, forKey: kgDefaultMigrationKey)
+                return .kg
+            }
+            guard let raw = UserDefaults.standard.string(forKey: key) else { return .kg }
+            return WeightUnit(rawValue: raw) ?? .kg
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: key) }
     }

@@ -34,6 +34,18 @@ enum MealCopyService {
         if let ingredient = source.ingredient, let count = source.count {
             return MealItem(ingredient: ingredient, count: count)
         }
+        if let name = source.estimatedName, let calories = source.estimatedCalories {
+            return MealItem(
+                estimatedName: name,
+                description: source.estimatedDescription ?? "",
+                calories: calories,
+                protein: source.estimatedProtein ?? 0,
+                carbs: source.estimatedCarbs ?? 0,
+                fat: source.estimatedFat ?? 0,
+                confidence: source.estimateConfidence ?? "手动估算",
+                photoData: source.photoData
+            )
+        }
         return nil
     }
 }
