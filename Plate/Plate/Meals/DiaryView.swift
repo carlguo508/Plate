@@ -23,27 +23,10 @@ struct DiaryView: View {
     }
 
     private func copyMeal(_ source: MealEntry, to type: MealType) {
-        let meal: MealEntry
         if let existing = mealEntry(for: type) {
-            meal = existing
+            MealCopyService.copyItems(from: source, to: existing, in: context)
         } else {
-            meal = MealEntry(date: selectedDate, mealType: type)
-            context.insert(meal)
-        }
-        for srcItem in source.items {
-            let copy: MealItem
-            if let recipe = srcItem.recipe, let servings = srcItem.servings {
-                copy = MealItem(recipe: recipe, servings: servings)
-            } else if let ing = srcItem.ingredient, let grams = srcItem.grams {
-                copy = MealItem(ingredient: ing, grams: grams)
-            } else if let ing = srcItem.ingredient, let count = srcItem.count {
-                copy = MealItem(ingredient: ing, count: count)
-            } else {
-                continue
-            }
-            copy.meal = meal
-            meal.items.append(copy)
-            context.insert(copy)
+            MealCopyService.copy(source, to: selectedDate, mealType: type, in: context)
         }
         try? context.save()
     }
