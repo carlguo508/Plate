@@ -128,7 +128,10 @@ struct ModelTests {
             calories: 650,
             protein: 35,
             carbs: 80,
-            fat: 20
+            fat: 20,
+            confidence: "中",
+            advice: "晚餐补一些蔬菜。",
+            portionNotes: "米饭份量可能有约 20% 误差。"
         ))
         ctx.insert(source)
 
@@ -142,7 +145,11 @@ struct ModelTests {
         #expect(copied.items.contains { $0.ingredient === rice && $0.grams == 180 })
         #expect(copied.items.contains { $0.ingredient === egg && $0.count == 1 })
         #expect(copied.items.contains {
-            $0.estimatedName == "外食盖饭" && $0.calories == 650 && $0.protein == 35
+            $0.estimatedName == "外食盖饭"
+                && $0.calories == 650
+                && $0.protein == 35
+                && $0.estimateConfidence == "中"
+                && $0.estimateAdvice == "晚餐补一些蔬菜。"
         })
     }
 
@@ -197,6 +204,52 @@ struct ModelTests {
         let workouts = try ctx.fetch(FetchDescriptor<WorkoutEntry>())
         #expect(workouts.count == 1)
         #expect(workouts.first?.kind == .cardio)
+    }
+
+    @Test func cardioEnergyEstimateUsesDurationAndBodyWeight() {
+        let workout = WorkoutEntry.cardio(
+            activity: "篮球",
+            durationMinutes: 60,
+            intensity: .medium
+        )
+
+        let lightEstimate = EnergyBalanceService.estimatedExerciseCalories(workout, bodyWeightKg: 60)
+        let heavyEstimate = EnergyBalanceService.estimatedExerciseCalories(workout, bodyWeightKg: 80)
+
+        #expect(lightEstimate > 300)
+        #expect(heavyEstimate > lightEstimate)
+    }
+
+    @Test func dailyEnergyBalanceIncludesBaselineAndExercise() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let meal = MealEntry(mealType: .lunch)
+        meal.items.append(MealItem(
+            estimatedName: "午餐",
+            description: "",
+            calories: 700,
+            protein: 40,
+            carbs: 80,
+            fat: 20
+        ))
+        let workout = WorkoutEntry.cardio(
+            activity: "走路",
+            durationMinutes: 30,
+            intensity: .low
+        )
+        ctx.insert(meal)
+        ctx.insert(workout)
+
+        let result = EnergyBalanceService.calculate(
+            meals: [meal],
+            workouts: [workout],
+            bodyWeightKg: 70
+        )
+
+        #expect(result.intakeCalories == 700)
+        #expect(result.protein == 40)
+        #expect(result.exerciseCalories > 0)
+        #expect(result.totalBurnCalories > Goals.baselineDailyBurn)
     }
 
     // MARK: - WeeklyPlan

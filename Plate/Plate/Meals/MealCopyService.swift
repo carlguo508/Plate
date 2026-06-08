@@ -43,6 +43,8 @@ enum MealCopyService {
                 carbs: source.estimatedCarbs ?? 0,
                 fat: source.estimatedFat ?? 0,
                 confidence: source.estimateConfidence ?? "手动估算",
+                advice: source.estimateAdvice ?? "",
+                portionNotes: source.estimatePortionNotes ?? "",
                 photoData: source.photoData
             )
         }

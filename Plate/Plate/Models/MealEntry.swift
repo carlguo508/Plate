@@ -42,6 +42,8 @@ final class MealItem {
     var estimatedCarbs: Double?
     var estimatedFat: Double?
     var estimateConfidence: String?
+    var estimateAdvice: String?
+    var estimatePortionNotes: String?
     @Attribute(.externalStorage) var photoData: Data?
 
     var meal: MealEntry?
@@ -69,6 +71,8 @@ final class MealItem {
         carbs: Double,
         fat: Double,
         confidence: String = "手动估算",
+        advice: String = "",
+        portionNotes: String = "",
         photoData: Data? = nil
     ) {
         self.estimatedName = estimatedName
@@ -78,6 +82,8 @@ final class MealItem {
         self.estimatedCarbs = carbs
         self.estimatedFat = fat
         self.estimateConfidence = confidence
+        self.estimateAdvice = advice
+        self.estimatePortionNotes = portionNotes
         self.photoData = photoData
     }
 

@@ -1,0 +1,11 @@
+{
+  "name": "plate-nutrition-ai",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "devDependencies": {
+    "vercel": "^41.7.0"
+  }
+}
