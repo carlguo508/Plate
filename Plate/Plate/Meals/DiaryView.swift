@@ -170,15 +170,7 @@ struct DiaryView: View {
             meal = MealEntry(date: selectedDate, mealType: mealType)
             context.insert(meal)
         }
-        let item: MealItem
-        switch source {
-        case .recipe(let recipe, let servings):
-            item = MealItem(recipe: recipe, servings: servings)
-        case .ingredientGrams(let ing, let grams):
-            item = MealItem(ingredient: ing, grams: grams)
-        case .ingredientCount(let ing, let count):
-            item = MealItem(ingredient: ing, count: count)
-        }
+        let item = source.makeMealItem()
         item.meal = meal
         meal.items.append(item)
         context.insert(item)
@@ -216,18 +208,26 @@ private struct MealItemRow: View {
     let item: MealItem
 
     private var name: String {
-        item.recipe?.name ?? item.ingredient?.name ?? "—"
+        item.recipe?.name ?? item.ingredient?.name ?? item.estimatedName ?? "—"
     }
 
     private var quantityText: String {
         if let s = item.servings { return s == 1 ? "1 份" : String(format: "%.1f 份", s) }
         if let g = item.grams { return "\(Int(g.rounded())) g" }
         if let c = item.count { return "\(c) 个" }
+        if item.estimatedName != nil { return item.estimatedDescription ?? "估算记录" }
         return ""
     }
 
     var body: some View {
         HStack {
+            if let data = item.photoData, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(name).font(.body)
                 Text(quantityText).font(.caption).foregroundStyle(.secondary)

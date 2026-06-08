@@ -10,6 +10,7 @@ struct DayDetailView: View {
     @State private var cardioText: String = ""
     @State private var showingStrengthLog = false
     @State private var showingCardioLog = false
+    @State private var pendingReplacement: WorkoutKind?
 
     init(day: DayPlan, planDate: Date) {
         self.day = day
@@ -19,13 +20,7 @@ struct DayDetailView: View {
         _workouts = Query(filter: #Predicate<WorkoutEntry> { $0.date >= dayStart && $0.date < dayEnd })
     }
 
-    private var strengthWorkout: WorkoutEntry? {
-        workouts.first { $0.kind == .strength }
-    }
-
-    private var cardioWorkouts: [WorkoutEntry] {
-        workouts.filter { $0.kind == .cardio }
-    }
+    private var workout: WorkoutEntry? { workouts.sorted { $0.date < $1.date }.first }
 
     var body: some View {
         Form {
@@ -48,54 +43,72 @@ struct DayDetailView: View {
                 }
             }
 
-            Section("力量记录") {
-                if let workout = strengthWorkout {
-                    ForEach(workout.sets.sorted(by: { $0.order < $1.order })) { set in
-                        HStack {
-                            Text(set.exerciseName)
-                            Spacer()
-                            Text("\(WeightConvert.formatted(set.weightKg, in: WeightPreference.current)) \(WeightPreference.current.label) × \(set.reps)")
-                                .font(.caption)
-                                .monospacedDigit()
-                        }
-                    }
-                    .onDelete { offsets in
-                        let sorted = workout.sets.sorted(by: { $0.order < $1.order })
-                        for index in offsets {
-                            context.delete(sorted[index])
-                        }
-                        try? context.save()
-                    }
-                }
-                Button {
-                    showingStrengthLog = true
-                } label: {
-                    Label("记录力量训练", systemImage: "dumbbell")
-                }
-            }
-
-            Section("有氧 / 球类记录") {
-                ForEach(cardioWorkouts) { workout in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(workout.cardioActivity ?? "—").font(.body)
-                        HStack(spacing: 8) {
-                            Text("\(workout.cardioDurationMinutes ?? 0) 分钟")
-                            Text("强度：\(intensityLabel(workout.cardioIntensity))")
+            if let workout {
+                Section("今日训练") {
+                    HStack {
+                        Label(
+                            workout.kind == .strength ? "力量训练" : "有氧 / 球类",
+                            systemImage: workout.kind == .strength ? "dumbbell" : "figure.run"
+                        )
+                        .fontWeight(.semibold)
+                        Spacer()
+                        Button("更换") {
+                            requestWorkout(workout.kind == .strength ? .cardio : .strength)
                         }
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                    }
+
+                    if workout.kind == .strength {
+                        ForEach(workout.sets.sorted(by: { $0.order < $1.order })) { set in
+                            HStack {
+                                Text(set.exerciseName)
+                                Spacer()
+                                Text("\(WeightConvert.formatted(set.weightKg, in: WeightPreference.current)) \(WeightPreference.current.label) × \(set.reps)")
+                                    .font(.caption)
+                                    .monospacedDigit()
+                            }
+                        }
+                        .onDelete { offsets in
+                            let sorted = workout.sets.sorted(by: { $0.order < $1.order })
+                            for index in offsets {
+                                context.delete(sorted[index])
+                            }
+                            try? context.save()
+                        }
+                        Button {
+                            showingStrengthLog = true
+                        } label: {
+                            Label("继续记录", systemImage: "plus.circle")
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(workout.cardioActivity ?? "—").font(.body)
+                            HStack(spacing: 8) {
+                                Text("\(workout.cardioDurationMinutes ?? 0) 分钟")
+                                Text("强度：\(intensityLabel(workout.cardioIntensity))")
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        Button {
+                            showingCardioLog = true
+                        } label: {
+                            Label("编辑记录", systemImage: "pencil")
+                        }
                     }
                 }
-                .onDelete { offsets in
-                    for index in offsets {
-                        context.delete(cardioWorkouts[index])
+            } else {
+                Section("今天练什么？") {
+                    Button {
+                        requestWorkout(.strength)
+                    } label: {
+                        Label("力量训练", systemImage: "dumbbell")
                     }
-                    try? context.save()
-                }
-                Button {
-                    showingCardioLog = true
-                } label: {
-                    Label("记录有氧 / 球类", systemImage: "figure.run")
+                    Button {
+                        requestWorkout(.cardio)
+                    } label: {
+                        Label("有氧 / 球类", systemImage: "figure.run")
+                    }
                 }
             }
         }
@@ -108,7 +121,55 @@ struct DayDetailView: View {
             StrengthLogSheet(date: planDate)
         }
         .sheet(isPresented: $showingCardioLog) {
-            CardioLogSheet(date: planDate, defaultActivity: day.plannedCardio ?? "")
+            CardioLogSheet(
+                date: planDate,
+                defaultActivity: day.plannedCardio ?? "",
+                existing: workout?.kind == .cardio ? workout : nil
+            )
+        }
+        .confirmationDialog(
+            "更换今天的训练？",
+            isPresented: Binding(
+                get: { pendingReplacement != nil && workout != nil },
+                set: { if !$0 { pendingReplacement = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("删除原记录并更换", role: .destructive) {
+                guard let kind = pendingReplacement else { return }
+                replaceWorkout(with: kind)
+            }
+            Button("取消", role: .cancel) {
+                pendingReplacement = nil
+            }
+        } message: {
+            Text("一天只保留一种训练。原有训练内容会被删除。")
+        }
+    }
+
+    private func requestWorkout(_ kind: WorkoutKind) {
+        if let workout, workout.kind != kind {
+            pendingReplacement = kind
+        } else {
+            openLog(for: kind)
+        }
+    }
+
+    private func replaceWorkout(with kind: WorkoutKind) {
+        for entry in workouts {
+            context.delete(entry)
+        }
+        try? context.save()
+        pendingReplacement = nil
+        openLog(for: kind)
+    }
+
+    private func openLog(for kind: WorkoutKind) {
+        switch kind {
+        case .strength:
+            showingStrengthLog = true
+        case .cardio:
+            showingCardioLog = true
         }
     }
 
@@ -229,6 +290,7 @@ private struct StrengthLogSheet: View {
 
     /// Copy each set from a prior workout into today's, preserving exercise order and weight/reps.
     private func repeatWorkout(_ source: WorkoutEntry) {
+        WorkoutDayService.enforceSingleWorkout(kind: .strength, on: date, in: context)
         let entry: WorkoutEntry
         if let existing = workout {
             entry = existing
@@ -251,6 +313,7 @@ private struct StrengthLogSheet: View {
     }
 
     private func addSet() {
+        WorkoutDayService.enforceSingleWorkout(kind: .strength, on: date, in: context)
         let entry: WorkoutEntry
         if let existing = workout {
             entry = existing
@@ -281,6 +344,7 @@ private struct StrengthLogSheet: View {
 private struct CardioLogSheet: View {
     let date: Date
     let defaultActivity: String
+    let existing: WorkoutEntry?
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -315,20 +379,36 @@ private struct CardioLogSheet: View {
             }
             .navigationTitle("有氧记录")
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear { if activity.isEmpty { activity = defaultActivity } }
+            .onAppear {
+                guard activity.isEmpty else { return }
+                activity = existing?.cardioActivity ?? defaultActivity
+                if let minutes = existing?.cardioDurationMinutes {
+                    minutesText = String(minutes)
+                }
+                if let savedIntensity = existing?.cardioIntensity {
+                    intensity = savedIntensity
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") {
-                        let workout = WorkoutEntry.cardio(
-                            activity: activity.trimmingCharacters(in: .whitespaces),
-                            durationMinutes: Int(minutesText) ?? 0,
-                            intensity: intensity,
-                            date: date
-                        )
-                        context.insert(workout)
+                        WorkoutDayService.enforceSingleWorkout(kind: .cardio, on: date, in: context)
+                        if let existing {
+                            existing.cardioActivity = activity.trimmingCharacters(in: .whitespaces)
+                            existing.cardioDurationMinutes = Int(minutesText) ?? 0
+                            existing.cardioIntensity = intensity
+                        } else {
+                            let workout = WorkoutEntry.cardio(
+                                activity: activity.trimmingCharacters(in: .whitespaces),
+                                durationMinutes: Int(minutesText) ?? 0,
+                                intensity: intensity,
+                                date: date
+                            )
+                            context.insert(workout)
+                        }
                         try? context.save()
                         dismiss()
                     }

@@ -1,10 +1,49 @@
 import SwiftUI
 import SwiftData
+import PhotosUI
 
 enum MealItemSource {
     case recipe(Recipe, servings: Double)
     case ingredientGrams(Ingredient, grams: Double)
     case ingredientCount(Ingredient, count: Int)
+    case estimated(
+        name: String,
+        description: String,
+        calories: Double,
+        protein: Double,
+        carbs: Double,
+        fat: Double,
+        photoData: Data?
+    )
+
+    func makeMealItem() -> MealItem {
+        switch self {
+        case .recipe(let recipe, let servings):
+            MealItem(recipe: recipe, servings: servings)
+        case .ingredientGrams(let ingredient, let grams):
+            MealItem(ingredient: ingredient, grams: grams)
+        case .ingredientCount(let ingredient, let count):
+            MealItem(ingredient: ingredient, count: count)
+        case .estimated(
+            let name,
+            let description,
+            let calories,
+            let protein,
+            let carbs,
+            let fat,
+            let photoData
+        ):
+            MealItem(
+                estimatedName: name,
+                description: description,
+                calories: calories,
+                protein: protein,
+                carbs: carbs,
+                fat: fat,
+                photoData: photoData
+            )
+        }
+    }
 }
 
 struct MealItemPickerView: View {
@@ -16,6 +55,7 @@ struct MealItemPickerView: View {
     enum Tab: String, CaseIterable, Identifiable {
         case recipes = "菜谱"
         case ingredients = "食材"
+        case estimate = "快速记录"
         var id: String { rawValue }
     }
 
@@ -37,6 +77,10 @@ struct MealItemPickerView: View {
                     IngredientPickList(onPick: { source in
                         onPick(source); dismiss()
                     })
+                case .estimate:
+                    EstimatedMealForm(onPick: { source in
+                        onPick(source); dismiss()
+                    })
                 }
             }
             .navigationTitle("加食物")
@@ -46,6 +90,163 @@ struct MealItemPickerView: View {
                     Button("取消") { dismiss() }
                 }
             }
+        }
+    }
+}
+
+private struct EstimatedMealForm: View {
+    let onPick: (MealItemSource) -> Void
+
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var photoData: Data?
+    @State private var showingCamera = false
+    @State private var name = ""
+    @State private var description = ""
+    @State private var caloriesText = ""
+    @State private var proteinText = ""
+    @State private var carbsText = ""
+    @State private var fatText = ""
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (Double(caloriesText) ?? -1) >= 0
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                if let photoData, let image = UIImage(data: photoData) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 180)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+
+                HStack {
+                    Button {
+                        showingCamera = true
+                    } label: {
+                        Label("拍照", systemImage: "camera")
+                    }
+                    Spacer()
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        Label("选择照片", systemImage: "photo")
+                    }
+                }
+            } footer: {
+                Text("照片会保存在这条饮食记录中。当前版本先由你确认大致营养，接入 AI 后会自动预填。")
+            }
+
+            Section("吃了什么") {
+                TextField("名称，如 牛肉盖饭", text: $name)
+                TextField("补充份量、酱汁、用油等", text: $description, axis: .vertical)
+                    .lineLimit(2...5)
+            }
+
+            Section("大致营养") {
+                nutritionField("热量", text: $caloriesText, unit: "kcal")
+                nutritionField("蛋白质", text: $proteinText, unit: "g")
+                nutritionField("碳水", text: $carbsText, unit: "g")
+                nutritionField("脂肪", text: $fatText, unit: "g")
+            }
+
+            Section {
+                Button("加入这餐") {
+                    onPick(.estimated(
+                        name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                        description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                        calories: Double(caloriesText) ?? 0,
+                        protein: Double(proteinText) ?? 0,
+                        carbs: Double(carbsText) ?? 0,
+                        fat: Double(fatText) ?? 0,
+                        photoData: photoData
+                    ))
+                }
+                .frame(maxWidth: .infinity)
+                .disabled(!canSave)
+            }
+        }
+        .onChange(of: selectedPhoto) { _, item in
+            Task {
+                guard let data = try? await item?.loadTransferable(type: Data.self) else { return }
+                photoData = compressedImageData(data)
+            }
+        }
+        .fullScreenCover(isPresented: $showingCamera) {
+            CameraPicker { data in
+                photoData = compressedImageData(data)
+            }
+            .ignoresSafeArea()
+        }
+    }
+
+    private func nutritionField(_ label: String, text: Binding<String>, unit: String) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            TextField("0", text: text)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 90)
+            Text(unit)
+                .foregroundStyle(.secondary)
+                .frame(width: 34, alignment: .leading)
+        }
+    }
+
+    private func compressedImageData(_ data: Data) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let maxDimension: CGFloat = 1600
+        let scale = min(1, maxDimension / max(image.size.width, image.size.height))
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let resized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return resized.jpegData(compressionQuality: 0.72)
+    }
+}
+
+private struct CameraPicker: UIViewControllerRepresentable {
+    let onCapture: (Data) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onCapture: onCapture, dismiss: dismiss)
+    }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let onCapture: (Data) -> Void
+        let dismiss: DismissAction
+
+        init(onCapture: @escaping (Data) -> Void, dismiss: DismissAction) {
+            self.onCapture = onCapture
+            self.dismiss = dismiss
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            if let image = info[.originalImage] as? UIImage, let data = image.jpegData(compressionQuality: 0.85) {
+                onCapture(data)
+            }
+            dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            dismiss()
         }
     }
 }

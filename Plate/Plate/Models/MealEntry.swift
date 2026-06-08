@@ -24,7 +24,7 @@ final class MealEntry {
     var totalFat: Double { items.reduce(0) { $0 + $1.fat } }
 }
 
-/// One thing eaten. Either a recipe portion OR a loose ingredient — never both.
+/// One thing eaten: a recipe portion, a loose ingredient, or a saved estimate.
 @Model
 final class MealItem {
     var recipe: Recipe?
@@ -34,6 +34,15 @@ final class MealItem {
     var ingredient: Ingredient?
     var grams: Double?
     var count: Int?
+
+    var estimatedName: String?
+    var estimatedDescription: String?
+    var estimatedCalories: Double?
+    var estimatedProtein: Double?
+    var estimatedCarbs: Double?
+    var estimatedFat: Double?
+    var estimateConfidence: String?
+    @Attribute(.externalStorage) var photoData: Data?
 
     var meal: MealEntry?
 
@@ -52,12 +61,32 @@ final class MealItem {
         self.count = count
     }
 
+    init(
+        estimatedName: String,
+        description: String,
+        calories: Double,
+        protein: Double,
+        carbs: Double,
+        fat: Double,
+        confidence: String = "手动估算",
+        photoData: Data? = nil
+    ) {
+        self.estimatedName = estimatedName
+        self.estimatedDescription = description
+        self.estimatedCalories = calories
+        self.estimatedProtein = protein
+        self.estimatedCarbs = carbs
+        self.estimatedFat = fat
+        self.estimateConfidence = confidence
+        self.photoData = photoData
+    }
+
     // MARK: - Nutrition
 
-    var calories: Double { nutrient(\Recipe.perServingCalories, \Ingredient.caloriesPer100g) }
-    var protein: Double { nutrient(\Recipe.perServingProtein, \Ingredient.proteinPer100g) }
-    var carbs: Double { nutrient(\Recipe.perServingCarbs, \Ingredient.carbsPer100g) }
-    var fat: Double { nutrient(\Recipe.perServingFat, \Ingredient.fatPer100g) }
+    var calories: Double { estimatedCalories ?? nutrient(\Recipe.perServingCalories, \Ingredient.caloriesPer100g) }
+    var protein: Double { estimatedProtein ?? nutrient(\Recipe.perServingProtein, \Ingredient.proteinPer100g) }
+    var carbs: Double { estimatedCarbs ?? nutrient(\Recipe.perServingCarbs, \Ingredient.carbsPer100g) }
+    var fat: Double { estimatedFat ?? nutrient(\Recipe.perServingFat, \Ingredient.fatPer100g) }
 
     private func nutrient(
         _ recipeKeyPath: KeyPath<Recipe, Double>,

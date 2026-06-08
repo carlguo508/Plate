@@ -6,18 +6,19 @@ struct TodayView: View {
     @Query private var todaysMeals: [MealEntry]
     @Query private var todaysWorkouts: [WorkoutEntry]
     @Query private var todaysWeights: [BodyWeightEntry]
-    @Query(sort: \MealEntry.date, order: .reverse) private var allMeals: [MealEntry]
-    @Query(sort: \BodyWeightEntry.date, order: .reverse) private var allWeights: [BodyWeightEntry]
+    @Query private var yesterdaysMeals: [MealEntry]
     @State private var showingGoals = false
     @State private var showingWeight = false
     @State private var showingMealPicker = false
     @State private var showingMealTypeChoice = false
     @State private var pendingMealType: MealType = .lunch
     @State private var goalsTick = 0  // forces re-render after goals update
+    @State private var latestPriorWeight: BodyWeightEntry?
 
     init() {
         let dayStart = Calendar.current.startOfDay(for: .now)
         let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? .now
+        let yesterdayStart = Calendar.current.date(byAdding: .day, value: -1, to: dayStart) ?? dayStart
         _todaysMeals = Query(filter: #Predicate<MealEntry> {
             $0.date >= dayStart && $0.date < dayEnd
         })
@@ -27,6 +28,9 @@ struct TodayView: View {
         _todaysWeights = Query(filter: #Predicate<BodyWeightEntry> {
             $0.date >= dayStart && $0.date < dayEnd
         })
+        _yesterdaysMeals = Query(filter: #Predicate<MealEntry> {
+            $0.date >= yesterdayStart && $0.date < dayStart
+        })
     }
 
     private var todaysWeight: BodyWeightEntry? { todaysWeights.first }
@@ -34,19 +38,10 @@ struct TodayView: View {
     private var totalKcal: Double { todaysMeals.reduce(0) { $0 + $1.totalCalories } }
     private var totalProtein: Double { todaysMeals.reduce(0) { $0 + $1.totalProtein } }
 
-    private var latestPriorWeight: BodyWeightEntry? {
-        let today = Calendar.current.startOfDay(for: .now)
-        return allWeights.first { $0.date < today }
-    }
-
     private var copyableYesterdayMeals: [MealEntry] {
-        let calendar = Calendar.current
-        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: .now) else { return [] }
         let recordedTypes = Set(todaysMeals.map(\.mealType))
-        return allMeals.filter {
-            calendar.isDate($0.date, inSameDayAs: yesterday)
-                && !recordedTypes.contains($0.mealType)
-                && !$0.items.isEmpty
+        return yesterdaysMeals.filter {
+            !recordedTypes.contains($0.mealType) && !$0.items.isEmpty
         }
     }
 
@@ -118,6 +113,9 @@ struct TodayView: View {
                     addItem(source, mealType: pendingMealType)
                 }
             }
+            .task {
+                loadLatestPriorWeight()
+            }
         }
         .id(goalsTick)
     }
@@ -131,15 +129,7 @@ struct TodayView: View {
             meal = MealEntry(date: dayStart, mealType: mealType)
             context.insert(meal)
         }
-        let item: MealItem
-        switch source {
-        case .recipe(let recipe, let servings):
-            item = MealItem(recipe: recipe, servings: servings)
-        case .ingredientGrams(let ing, let grams):
-            item = MealItem(ingredient: ing, grams: grams)
-        case .ingredientCount(let ing, let count):
-            item = MealItem(ingredient: ing, count: count)
-        }
+        let item = source.makeMealItem()
         item.meal = meal
         meal.items.append(item)
         context.insert(item)
@@ -193,6 +183,17 @@ struct TodayView: View {
     private func reuseWeight(_ source: BodyWeightEntry) {
         context.insert(BodyWeightEntry(date: .now, weightKg: source.weightKg))
         try? context.save()
+    }
+
+    private func loadLatestPriorWeight() {
+        guard latestPriorWeight == nil else { return }
+        let today = Calendar.current.startOfDay(for: .now)
+        var descriptor = FetchDescriptor<BodyWeightEntry>(
+            predicate: #Predicate { $0.date < today },
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
+        latestPriorWeight = try? context.fetch(descriptor).first
     }
 
     private var dateHeader: some View {
@@ -297,7 +298,7 @@ struct TodayView: View {
     }
 
     private func itemName(_ item: MealItem) -> String {
-        item.recipe?.name ?? item.ingredient?.name ?? "—"
+        item.recipe?.name ?? item.ingredient?.name ?? item.estimatedName ?? "—"
     }
 
     private func mealOrder(_ type: MealType) -> Int {

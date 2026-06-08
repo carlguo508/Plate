@@ -122,6 +122,14 @@ struct ModelTests {
         source.items.append(MealItem(recipe: recipe, servings: 1.5))
         source.items.append(MealItem(ingredient: rice, grams: 180))
         source.items.append(MealItem(ingredient: egg, count: 1))
+        source.items.append(MealItem(
+            estimatedName: "外食盖饭",
+            description: "一碗",
+            calories: 650,
+            protein: 35,
+            carbs: 80,
+            fat: 20
+        ))
         ctx.insert(source)
 
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: source.date)!
@@ -129,10 +137,13 @@ struct ModelTests {
         try ctx.save()
 
         #expect(copied.mealType == .lunch)
-        #expect(copied.items.count == 3)
+        #expect(copied.items.count == 4)
         #expect(copied.items.contains { $0.recipe === recipe && $0.servings == 1.5 })
         #expect(copied.items.contains { $0.ingredient === rice && $0.grams == 180 })
         #expect(copied.items.contains { $0.ingredient === egg && $0.count == 1 })
+        #expect(copied.items.contains {
+            $0.estimatedName == "外食盖饭" && $0.calories == 650 && $0.protein == 35
+        })
     }
 
     // MARK: - Workout
@@ -165,6 +176,27 @@ struct ModelTests {
         #expect(fetched.first?.cardioActivity == "篮球")
         #expect(fetched.first?.cardioDurationMinutes == 90)
         #expect(fetched.first?.cardioIntensity == .high)
+    }
+
+    @Test func workoutDayKeepsOnlyOneKind() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let date = Date()
+        ctx.insert(WorkoutEntry.strength(date: date))
+        ctx.insert(WorkoutEntry.cardio(
+            activity: "篮球",
+            durationMinutes: 60,
+            intensity: .medium,
+            date: date
+        ))
+        try ctx.save()
+
+        WorkoutDayService.enforceSingleWorkout(kind: .cardio, on: date, in: ctx)
+        try ctx.save()
+
+        let workouts = try ctx.fetch(FetchDescriptor<WorkoutEntry>())
+        #expect(workouts.count == 1)
+        #expect(workouts.first?.kind == .cardio)
     }
 
     // MARK: - WeeklyPlan
