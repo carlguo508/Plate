@@ -13,6 +13,9 @@ enum MealItemSource {
         protein: Double,
         carbs: Double,
         fat: Double,
+        confidence: String,
+        advice: String,
+        portionNotes: String,
         photoData: Data?
     )
 
@@ -31,6 +34,9 @@ enum MealItemSource {
             let protein,
             let carbs,
             let fat,
+            let confidence,
+            let advice,
+            let portionNotes,
             let photoData
         ):
             MealItem(
@@ -40,6 +46,9 @@ enum MealItemSource {
                 protein: protein,
                 carbs: carbs,
                 fat: fat,
+                confidence: confidence,
+                advice: advice,
+                portionNotes: portionNotes,
                 photoData: photoData
             )
         }
@@ -50,7 +59,22 @@ struct MealItemPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var tab: Tab = .recipes
 
+    let bodyWeightKg: Double?
+    let currentDailyCalories: Double
+    let estimatedDailyBurn: Double
     let onPick: (MealItemSource) -> Void
+
+    init(
+        bodyWeightKg: Double? = nil,
+        currentDailyCalories: Double = 0,
+        estimatedDailyBurn: Double = Goals.baselineDailyBurn,
+        onPick: @escaping (MealItemSource) -> Void
+    ) {
+        self.bodyWeightKg = bodyWeightKg
+        self.currentDailyCalories = currentDailyCalories
+        self.estimatedDailyBurn = estimatedDailyBurn
+        self.onPick = onPick
+    }
 
     enum Tab: String, CaseIterable, Identifiable {
         case recipes = "菜谱"
@@ -78,7 +102,11 @@ struct MealItemPickerView: View {
                         onPick(source); dismiss()
                     })
                 case .estimate:
-                    EstimatedMealForm(onPick: { source in
+                    EstimatedMealForm(
+                        bodyWeightKg: bodyWeightKg,
+                        currentDailyCalories: currentDailyCalories,
+                        estimatedDailyBurn: estimatedDailyBurn,
+                        onPick: { source in
                         onPick(source); dismiss()
                     })
                 }
@@ -95,6 +123,9 @@ struct MealItemPickerView: View {
 }
 
 private struct EstimatedMealForm: View {
+    let bodyWeightKg: Double?
+    let currentDailyCalories: Double
+    let estimatedDailyBurn: Double
     let onPick: (MealItemSource) -> Void
 
     @State private var selectedPhoto: PhotosPickerItem?
@@ -106,6 +137,11 @@ private struct EstimatedMealForm: View {
     @State private var proteinText = ""
     @State private var carbsText = ""
     @State private var fatText = ""
+    @State private var confidence = "手动估算"
+    @State private var portionNotes = ""
+    @State private var advice = ""
+    @State private var isEstimating = false
+    @State private var aiError: String?
 
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -136,7 +172,7 @@ private struct EstimatedMealForm: View {
                     }
                 }
             } footer: {
-                Text("照片会保存在这条饮食记录中。当前版本先由你确认大致营养，接入 AI 后会自动预填。")
+                Text("照片会保存在这条饮食记录中。点「AI 估算」后会自动预填，保存前仍可手动修改。")
             }
 
             Section("吃了什么") {
@@ -150,6 +186,45 @@ private struct EstimatedMealForm: View {
                 nutritionField("蛋白质", text: $proteinText, unit: "g")
                 nutritionField("碳水", text: $carbsText, unit: "g")
                 nutritionField("脂肪", text: $fatText, unit: "g")
+                if !confidence.isEmpty {
+                    LabeledContent("可信度", value: confidence)
+                }
+                if !portionNotes.isEmpty {
+                    Text(portionNotes)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if !advice.isEmpty {
+                    Text(advice)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                Button {
+                    Task { await estimateWithAI() }
+                } label: {
+                    HStack {
+                        Label("AI 估算这餐", systemImage: "sparkles")
+                        Spacer()
+                        if isEstimating {
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isEstimating || (
+                    photoData == nil
+                        && name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        && description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ))
+                if let aiError {
+                    Text(aiError)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            } footer: {
+                Text("需要先在「今天」右上角目标设置里填写服务端地址。AI 结果只是粗估，用来降低记录成本。")
             }
 
             Section {
@@ -161,6 +236,9 @@ private struct EstimatedMealForm: View {
                         protein: Double(proteinText) ?? 0,
                         carbs: Double(carbsText) ?? 0,
                         fat: Double(fatText) ?? 0,
+                        confidence: confidence,
+                        advice: advice,
+                        portionNotes: portionNotes,
                         photoData: photoData
                     ))
                 }
@@ -194,6 +272,45 @@ private struct EstimatedMealForm: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 34, alignment: .leading)
         }
+    }
+
+    @MainActor
+    private func estimateWithAI() async {
+        isEstimating = true
+        aiError = nil
+        defer { isEstimating = false }
+
+        do {
+            let estimate = try await NutritionAIService().estimateMeal(
+                photoData: photoData,
+                description: [name, description]
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: "\n"),
+                bodyWeightKg: bodyWeightKg,
+                currentDailyCalories: currentDailyCalories,
+                estimatedDailyBurn: estimatedDailyBurn
+            )
+            name = estimate.name
+            description = estimate.description
+            caloriesText = numberText(estimate.calories)
+            proteinText = numberText(estimate.protein)
+            carbsText = numberText(estimate.carbs)
+            fatText = numberText(estimate.fat)
+            confidence = estimate.confidence
+            portionNotes = estimate.portionNotes
+            advice = estimate.advice
+        } catch {
+            aiError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    private func numberText(_ value: Double) -> String {
+        let rounded = value.rounded()
+        if abs(value - rounded) < 0.05 {
+            return String(Int(rounded))
+        }
+        return String(format: "%.1f", value)
     }
 
     private func compressedImageData(_ data: Data) -> Data? {

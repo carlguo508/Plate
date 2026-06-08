@@ -37,6 +37,14 @@ struct TodayView: View {
 
     private var totalKcal: Double { todaysMeals.reduce(0) { $0 + $1.totalCalories } }
     private var totalProtein: Double { todaysMeals.reduce(0) { $0 + $1.totalProtein } }
+    private var currentWeightKg: Double? { todaysWeight?.weightKg ?? latestPriorWeight?.weightKg }
+    private var energyBalance: DailyEnergyBalance {
+        EnergyBalanceService.calculate(
+            meals: todaysMeals,
+            workouts: todaysWorkouts,
+            bodyWeightKg: currentWeightKg
+        )
+    }
 
     private var copyableYesterdayMeals: [MealEntry] {
         let recordedTypes = Set(todaysMeals.map(\.mealType))
@@ -61,6 +69,7 @@ struct TodayView: View {
 
                 Section("体重") { weightCard }
                 Section("今日训练") { trainingCard }
+                Section("今日热量") { energyBalanceCard }
                 Section("今日饮食") {
                     nutritionCard
                     Button {
@@ -109,7 +118,11 @@ struct TodayView: View {
                 }
             }
             .sheet(isPresented: $showingMealPicker) {
-                MealItemPickerView { source in
+                MealItemPickerView(
+                    bodyWeightKg: currentWeightKg,
+                    currentDailyCalories: totalKcal,
+                    estimatedDailyBurn: energyBalance.totalBurnCalories
+                ) { source in
                     addItem(source, mealType: pendingMealType)
                 }
             }
@@ -277,6 +290,50 @@ struct TodayView: View {
         .padding(.vertical, 4)
     }
 
+    private var energyBalanceCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                energyValue("已摄入", value: energyBalance.intakeCalories, tint: .orange)
+                Divider()
+                energyValue("估算消耗", value: energyBalance.totalBurnCalories, tint: .blue)
+                Divider()
+                energyValue(
+                    energyBalance.calorieGap >= 0 ? "估算缺口" : "估算超出",
+                    value: abs(energyBalance.calorieGap),
+                    tint: energyBalance.calorieGap >= 0 ? .green : .red
+                )
+            }
+            if energyBalance.exerciseCalories > 0 {
+                Text("训练约 \(NutritionFormat.kcal(energyBalance.exerciseCalories)) kcal，已计入消耗")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(energyBalance.advice)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Text("消耗为全天粗估，重点看 7 天体重和摄入趋势。")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func energyValue(_ label: String, value: Double, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("\(NutritionFormat.kcal(value))")
+                .font(.headline)
+                .monospacedDigit()
+                .foregroundStyle(tint)
+            Text("kcal")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var mealList: some View {
         ForEach(todaysMeals.sorted(by: { mealOrder($0.mealType) < mealOrder($1.mealType) })) { meal in
             VStack(alignment: .leading, spacing: 4) {
@@ -351,6 +408,9 @@ private struct GoalsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var kcalText: String = String(Int(Goals.dailyKcal))
     @State private var proteinText: String = String(Int(Goals.dailyProtein))
+    @State private var baselineBurnText: String = String(Int(Goals.baselineDailyBurn))
+    @State private var aiEndpoint = Goals.aiEndpoint
+    @State private var aiAccessToken = Goals.aiAccessToken
 
     var body: some View {
         NavigationStack {
@@ -379,6 +439,26 @@ private struct GoalsSheet: View {
                             .frame(width: 80)
                         Text("g").foregroundStyle(.secondary)
                     }
+                    HStack {
+                        Text("基础日消耗")
+                        Spacer()
+                        TextField("kcal", text: $baselineBurnText)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                        Text("kcal").foregroundStyle(.secondary)
+                    }
+                }
+                Section {
+                    TextField("https://.../api/analyze-meal", text: $aiEndpoint)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                    SecureField("访问令牌（可选）", text: $aiAccessToken)
+                        .textInputAutocapitalization(.never)
+                } header: {
+                    Text("AI 营养估算")
+                } footer: {
+                    Text("这里填写你部署的代理地址。OpenAI API Key 只放在服务端，不能写入 App。")
                 }
             }
             .navigationTitle("每日目标")
@@ -391,6 +471,9 @@ private struct GoalsSheet: View {
                     Button("保存") {
                         if let k = Double(kcalText), k > 0 { Goals.dailyKcal = k }
                         if let p = Double(proteinText), p > 0 { Goals.dailyProtein = p }
+                        if let b = Double(baselineBurnText), b > 0 { Goals.baselineDailyBurn = b }
+                        Goals.aiEndpoint = aiEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+                        Goals.aiAccessToken = aiAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
                         dismiss()
                     }
                 }
