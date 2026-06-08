@@ -121,7 +121,8 @@ struct TodayView: View {
                 MealItemPickerView(
                     bodyWeightKg: currentWeightKg,
                     currentDailyCalories: totalKcal,
-                    estimatedDailyBurn: energyBalance.totalBurnCalories
+                    estimatedDailyBurn: energyBalance.totalBurnCalories,
+                    preferredMealType: pendingMealType
                 ) { source in
                     addItem(source, mealType: pendingMealType)
                 }

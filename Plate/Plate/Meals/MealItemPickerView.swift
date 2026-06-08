@@ -19,6 +19,31 @@ enum MealItemSource {
         photoData: Data?
     )
 
+    init?(reusing item: MealItem) {
+        if let recipe = item.recipe, let servings = item.servings {
+            self = .recipe(recipe, servings: servings)
+        } else if let ingredient = item.ingredient, let grams = item.grams {
+            self = .ingredientGrams(ingredient, grams: grams)
+        } else if let ingredient = item.ingredient, let count = item.count {
+            self = .ingredientCount(ingredient, count: count)
+        } else if let name = item.estimatedName, let calories = item.estimatedCalories {
+            self = .estimated(
+                name: name,
+                description: item.estimatedDescription ?? "",
+                calories: calories,
+                protein: item.estimatedProtein ?? 0,
+                carbs: item.estimatedCarbs ?? 0,
+                fat: item.estimatedFat ?? 0,
+                confidence: "沿用常用记录",
+                advice: item.estimateAdvice ?? "",
+                portionNotes: item.estimatePortionNotes ?? "",
+                photoData: nil
+            )
+        } else {
+            return nil
+        }
+    }
+
     func makeMealItem() -> MealItem {
         switch self {
         case .recipe(let recipe, let servings):
@@ -57,30 +82,39 @@ enum MealItemSource {
 
 struct MealItemPickerView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var tab: Tab = .recipes
+    @Query(sort: \MealEntry.date, order: .reverse) private var mealHistory: [MealEntry]
+    @State private var tab: Tab = .frequent
 
     let bodyWeightKg: Double?
     let currentDailyCalories: Double
     let estimatedDailyBurn: Double
+    let preferredMealType: MealType?
     let onPick: (MealItemSource) -> Void
 
     init(
         bodyWeightKg: Double? = nil,
         currentDailyCalories: Double = 0,
         estimatedDailyBurn: Double = Goals.baselineDailyBurn,
+        preferredMealType: MealType? = nil,
         onPick: @escaping (MealItemSource) -> Void
     ) {
         self.bodyWeightKg = bodyWeightKg
         self.currentDailyCalories = currentDailyCalories
         self.estimatedDailyBurn = estimatedDailyBurn
+        self.preferredMealType = preferredMealType
         self.onPick = onPick
     }
 
     enum Tab: String, CaseIterable, Identifiable {
+        case frequent = "常用"
         case recipes = "菜谱"
         case ingredients = "食材"
-        case estimate = "快速记录"
+        case estimate = "AI 记录"
         var id: String { rawValue }
+    }
+
+    private var frequentOptions: [FrequentMealOption] {
+        FrequentMealService.options(from: mealHistory, preferredMealType: preferredMealType)
     }
 
     var body: some View {
@@ -93,6 +127,12 @@ struct MealItemPickerView: View {
                 .padding()
 
                 switch tab {
+                case .frequent:
+                    FrequentMealList(options: frequentOptions) { item in
+                        guard let source = MealItemSource(reusing: item) else { return }
+                        onPick(source)
+                        dismiss()
+                    }
                 case .recipes:
                     RecipePickList(onPick: { source in
                         onPick(source); dismiss()
@@ -117,6 +157,139 @@ struct MealItemPickerView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
                 }
+            }
+        }
+    }
+}
+
+struct FrequentMealOption: Identifiable {
+    let id: String
+    let item: MealItem
+    let usageCount: Int
+    let isPreferredMealType: Bool
+
+    var name: String {
+        item.recipe?.name ?? item.ingredient?.name ?? item.estimatedName ?? "未命名"
+    }
+}
+
+enum FrequentMealService {
+    static func options(
+        from meals: [MealEntry],
+        preferredMealType: MealType?,
+        limit: Int = 8
+    ) -> [FrequentMealOption] {
+        struct Accumulator {
+            var latestItem: MealItem
+            var usageCount: Int
+            var preferredCount: Int
+            var latestDate: Date
+        }
+
+        var grouped: [String: Accumulator] = [:]
+        for meal in meals {
+            for item in meal.items {
+                let name = item.recipe?.name ?? item.ingredient?.name ?? item.estimatedName ?? ""
+                let key = normalizedName(name)
+                guard !key.isEmpty, MealItemSource(reusing: item) != nil else { continue }
+
+                if var existing = grouped[key] {
+                    existing.usageCount += 1
+                    if meal.mealType == preferredMealType {
+                        existing.preferredCount += 1
+                    }
+                    if meal.date > existing.latestDate {
+                        existing.latestItem = item
+                        existing.latestDate = meal.date
+                    }
+                    grouped[key] = existing
+                } else {
+                    grouped[key] = Accumulator(
+                        latestItem: item,
+                        usageCount: 1,
+                        preferredCount: meal.mealType == preferredMealType ? 1 : 0,
+                        latestDate: meal.date
+                    )
+                }
+            }
+        }
+
+        return grouped.map { key, value in
+            FrequentMealOption(
+                id: key,
+                item: value.latestItem,
+                usageCount: value.usageCount,
+                isPreferredMealType: value.preferredCount > 0
+            )
+        }
+        .sorted {
+            if $0.isPreferredMealType != $1.isPreferredMealType {
+                return $0.isPreferredMealType
+            }
+            if $0.usageCount != $1.usageCount {
+                return $0.usageCount > $1.usageCount
+            }
+            return ($0.item.meal?.date ?? .distantPast) > ($1.item.meal?.date ?? .distantPast)
+        }
+        .prefix(limit)
+        .map { $0 }
+    }
+
+    private static func normalizedName(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+    }
+}
+
+private struct FrequentMealList: View {
+    let options: [FrequentMealOption]
+    let onPick: (MealItem) -> Void
+
+    var body: some View {
+        if options.isEmpty {
+            ContentUnavailableView(
+                "还没有常用食物",
+                systemImage: "clock.arrow.circlepath",
+                description: Text("记录几次后，早餐和常吃的食物会自动出现在这里。")
+            )
+        } else {
+            List(options) { option in
+                Button {
+                    onPick(option.item)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: option.isPreferredMealType ? "star.fill" : "clock")
+                            .foregroundStyle(option.isPreferredMealType ? .orange : .secondary)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(option.name)
+                                .foregroundStyle(.primary)
+                            HStack(spacing: 8) {
+                                Text("\(NutritionFormat.kcal(option.item.calories)) kcal")
+                                Text("蛋白 \(NutritionFormat.grams(option.item.protein))")
+                                if option.usageCount > 1 {
+                                    Text("记录过 \(option.usageCount) 次")
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .padding(.vertical, 3)
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                Text("点击即按最近一次记录加入；份量不同可使用拍照或文字重新估算。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(.bar)
             }
         }
     }
@@ -166,6 +339,7 @@ private struct EstimatedMealForm: View {
                 HStack {
                     Button {
                         photoError = nil
+                        showingPhotoLibrary = false
                         showingCamera = true
                     } label: {
                         Label("拍照", systemImage: "camera")
@@ -173,6 +347,7 @@ private struct EstimatedMealForm: View {
                     Spacer()
                     Button {
                         photoError = nil
+                        showingCamera = false
                         showingPhotoLibrary = true
                     } label: {
                         Label("选择照片", systemImage: "photo")
@@ -192,7 +367,7 @@ private struct EstimatedMealForm: View {
                         .foregroundStyle(.red)
                 }
             } footer: {
-                Text("照片会保存在这条饮食记录中。点「AI 估算」后会自动预填，保存前仍可手动修改。")
+                Text("拍照或选图完成后会自动估算并预填；保存前仍可手动修改。")
             }
 
             Section("吃了什么") {
@@ -274,13 +449,18 @@ private struct EstimatedMealForm: View {
         )
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
+            showingPhotoLibrary = false
+            showingCamera = false
             Task { await loadPhoto(item) }
         }
         .fullScreenCover(isPresented: $showingCamera) {
             CameraPicker { data in
+                showingCamera = false
                 photoData = compressedImageData(data)
                 if photoData == nil {
                     photoError = "无法读取这张照片，请重新拍摄。"
+                } else {
+                    Task { await estimateWithAI() }
                 }
             }
             .ignoresSafeArea()
@@ -356,6 +536,7 @@ private struct EstimatedMealForm: View {
                 return
             }
             photoData = compressed
+            await estimateWithAI()
         } catch {
             photoError = "照片读取失败。若照片在 iCloud 中，请等待下载完成后重试。"
         }
