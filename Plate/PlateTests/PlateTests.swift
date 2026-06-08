@@ -252,6 +252,69 @@ struct ModelTests {
         #expect(result.totalBurnCalories > Goals.baselineDailyBurn)
     }
 
+    @Test func frequentMealsPreferCurrentMealTypeAndReuseLatestNutrition() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: .now)!
+
+        let breakfast = MealEntry(date: yesterday, mealType: .breakfast)
+        let olderLatte = MealItem(
+            estimatedName: "拿铁",
+            description: "中杯",
+            calories: 160,
+            protein: 8,
+            carbs: 15,
+            fat: 7,
+            photoData: Data([1, 2, 3])
+        )
+        olderLatte.meal = breakfast
+        breakfast.items.append(olderLatte)
+
+        let todayBreakfast = MealEntry(date: .now, mealType: .breakfast)
+        let latestLatte = MealItem(
+            estimatedName: "拿铁",
+            description: "大杯",
+            calories: 210,
+            protein: 10,
+            carbs: 20,
+            fat: 9,
+            photoData: Data([4, 5, 6])
+        )
+        latestLatte.meal = todayBreakfast
+        todayBreakfast.items.append(latestLatte)
+
+        let dinner = MealEntry(date: .now, mealType: .dinner)
+        let rice = MealItem(
+            estimatedName: "鸡肉饭",
+            description: "一份",
+            calories: 650,
+            protein: 40,
+            carbs: 75,
+            fat: 20
+        )
+        rice.meal = dinner
+        dinner.items.append(rice)
+
+        ctx.insert(breakfast)
+        ctx.insert(todayBreakfast)
+        ctx.insert(dinner)
+        try ctx.save()
+
+        let options = FrequentMealService.options(
+            from: [breakfast, todayBreakfast, dinner],
+            preferredMealType: .breakfast
+        )
+
+        #expect(options.first?.name == "拿铁")
+        #expect(options.first?.usageCount == 2)
+        #expect(options.first?.item.calories == 210)
+
+        let reused = try #require(MealItemSource(reusing: latestLatte))
+        let copied = reused.makeMealItem()
+        #expect(copied.calories == 210)
+        #expect(copied.photoData == nil)
+    }
+
     // MARK: - WeeklyPlan
 
     @Test func weeklyPlanHoldsSevenDayPlans() throws {

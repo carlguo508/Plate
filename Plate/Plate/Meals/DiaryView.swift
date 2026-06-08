@@ -52,7 +52,7 @@ struct DiaryView: View {
             .listSectionSpacing(.compact)
             .navigationTitle("饮食")
             .sheet(item: $pickerTarget) { type in
-                MealItemPickerView { source in
+                MealItemPickerView(preferredMealType: type) { source in
                     addItem(source, mealType: type)
                 }
             }
