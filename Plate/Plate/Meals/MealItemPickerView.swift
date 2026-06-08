@@ -131,6 +131,9 @@ private struct EstimatedMealForm: View {
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var photoData: Data?
     @State private var showingCamera = false
+    @State private var showingPhotoLibrary = false
+    @State private var isLoadingPhoto = false
+    @State private var photoError: String?
     @State private var name = ""
     @State private var description = ""
     @State private var caloriesText = ""
@@ -162,14 +165,31 @@ private struct EstimatedMealForm: View {
 
                 HStack {
                     Button {
+                        photoError = nil
                         showingCamera = true
                     } label: {
                         Label("拍照", systemImage: "camera")
                     }
                     Spacer()
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    Button {
+                        photoError = nil
+                        showingPhotoLibrary = true
+                    } label: {
                         Label("选择照片", systemImage: "photo")
                     }
+                }
+                if isLoadingPhoto {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("正在读取照片…")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let photoError {
+                    Text(photoError)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
                 }
             } footer: {
                 Text("照片会保存在这条饮食记录中。点「AI 估算」后会自动预填，保存前仍可手动修改。")
@@ -246,15 +266,22 @@ private struct EstimatedMealForm: View {
                 .disabled(!canSave)
             }
         }
+        .photosPicker(
+            isPresented: $showingPhotoLibrary,
+            selection: $selectedPhoto,
+            matching: .images,
+            photoLibrary: .shared()
+        )
         .onChange(of: selectedPhoto) { _, item in
-            Task {
-                guard let data = try? await item?.loadTransferable(type: Data.self) else { return }
-                photoData = compressedImageData(data)
-            }
+            guard let item else { return }
+            Task { await loadPhoto(item) }
         }
         .fullScreenCover(isPresented: $showingCamera) {
             CameraPicker { data in
                 photoData = compressedImageData(data)
+                if photoData == nil {
+                    photoError = "无法读取这张照片，请重新拍摄。"
+                }
             }
             .ignoresSafeArea()
         }
@@ -311,6 +338,27 @@ private struct EstimatedMealForm: View {
             return String(Int(rounded))
         }
         return String(format: "%.1f", value)
+    }
+
+    @MainActor
+    private func loadPhoto(_ item: PhotosPickerItem) async {
+        isLoadingPhoto = true
+        photoError = nil
+        defer {
+            isLoadingPhoto = false
+            selectedPhoto = nil
+        }
+
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self),
+                  let compressed = compressedImageData(data) else {
+                photoError = "无法读取这张照片，请尝试选择另一张或重新拍摄。"
+                return
+            }
+            photoData = compressed
+        } catch {
+            photoError = "照片读取失败。若照片在 iCloud 中，请等待下载完成后重试。"
+        }
     }
 
     private func compressedImageData(_ data: Data) -> Data? {
