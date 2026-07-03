@@ -64,28 +64,25 @@ struct ReviewView: View {
     // MARK: - Charts
 
     private var kcalChart: some View {
-        Chart(dayBuckets) { bucket in
-            BarMark(
-                x: .value("日期", bucket.date, unit: .day),
-                y: .value("热量", bucket.kcal)
-            )
-            .foregroundStyle(.orange)
+        Chart {
+            ForEach(dayBuckets) { bucket in
+                BarMark(
+                    x: .value("日期", bucket.date, unit: .day),
+                    y: .value("热量", bucket.kcal)
+                )
+                .foregroundStyle(.orange)
+            }
+            RuleMark(y: .value("目标", Goals.dailyKcal))
+                .foregroundStyle(.gray)
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                .annotation(position: .top, alignment: .trailing) {
+                    Text("目标 \(NutritionFormat.kcal(Goals.dailyKcal))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
         }
-        .chartForegroundStyleScale(["热量": Color.orange, "目标": Color.gray])
         .chartYAxis {
             AxisMarks(position: .leading)
-        }
-        .chartOverlay { proxy in
-            GeometryReader { geo in
-                if let yRange = proxy.plotFrame.map({ geo[$0] }) {
-                    let y = (1 - Goals.dailyKcal / max(maxKcal, Goals.dailyKcal)) * yRange.height + yRange.minY
-                    Path { p in
-                        p.move(to: CGPoint(x: yRange.minX, y: y))
-                        p.addLine(to: CGPoint(x: yRange.maxX, y: y))
-                    }
-                    .stroke(Color.gray, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                }
-            }
         }
         .frame(height: 180)
     }
@@ -223,7 +220,6 @@ struct ReviewView: View {
 
     // MARK: - Aggregates
 
-    private var maxKcal: Double { dayBuckets.map(\.kcal).max() ?? 0 }
     private var nonEmptyDays: [DayBucket] { dayBuckets.filter { $0.kcal > 0 } }
     private var avgKcal: Double {
         nonEmptyDays.isEmpty ? 0 : nonEmptyDays.reduce(0) { $0 + $1.kcal } / Double(nonEmptyDays.count)
