@@ -2,7 +2,7 @@
 
 A personal iOS app for tracking recipes, daily meals, and training in one closed loop.
 
-**Status:** Design complete, implementation in progress (P0).
+**Status:** Core features implemented — recipes, meal diary, AI photo estimates, training plan, weight & review charts.
 
 See [`docs/plans/2026-05-27-plate-design.md`](docs/plans/2026-05-27-plate-design.md) for the full design.
 

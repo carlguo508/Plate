@@ -108,7 +108,7 @@ struct RecipeListView: View {
 
     private func deleteRecipes(at offsets: IndexSet) {
         for index in offsets {
-            context.delete(filteredRecipes[index])
+            RecipeDeletionService.delete(filteredRecipes[index], in: context)
         }
         try? context.save()
     }
