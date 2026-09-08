@@ -38,6 +38,16 @@ struct DiaryView: View {
         }
     }
 
+    private var dailyItems: [MealItem] { todaysMeals.flatMap(\.items) }
+    private var knownProteinTotal: Double { todaysMeals.reduce(0) { $0 + $1.recordedProteinMinimum } }
+    private var proteinTotalDisplay: (value: String, unit: String) {
+        guard dailyItems.contains(where: { $0.knownProtein == nil }) else {
+            return (String(format: "%.0f", dailyTotals.p), "g")
+        }
+        guard knownProteinTotal > 0 else { return ("未填", "") }
+        return ("至少 \(NutritionFormat.grams(knownProteinTotal))", "g")
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -108,7 +118,7 @@ struct DiaryView: View {
         HStack(spacing: 0) {
             totalCell("热量", NutritionFormat.kcal(dailyTotals.kcal), "kcal")
             Divider()
-            totalCell("蛋白", String(format: "%.0f", dailyTotals.p), "g")
+            totalCell("蛋白", proteinTotalDisplay.value, proteinTotalDisplay.unit)
         }
         .frame(height: 56)
         .padding(.vertical, 8)

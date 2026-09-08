@@ -38,6 +38,13 @@ struct TodayView: View {
 
     private var totalKcal: Double { todaysMeals.reduce(0) { $0 + $1.totalCalories } }
     private var totalProtein: Double { todaysMeals.reduce(0) { $0 + $1.totalProtein } }
+    private var todaysItems: [MealItem] { todaysMeals.flatMap(\.items) }
+    private var knownProteinTotal: Double { todaysMeals.reduce(0) { $0 + $1.recordedProteinMinimum } }
+    private var proteinDisplayText: String? {
+        guard todaysItems.contains(where: { $0.knownProtein == nil }) else { return nil }
+        guard knownProteinTotal > 0 else { return "未填" }
+        return "至少 \(NutritionFormat.grams(knownProteinTotal)) / \(NutritionFormat.grams(Goals.dailyProtein)) g"
+    }
     private var currentWeightKg: Double? { todaysWeight?.weightKg ?? latestPriorWeight?.weightKg }
 
     private var copyableYesterdayMeals: [MealEntry] {
@@ -252,7 +259,8 @@ struct TodayView: View {
                 value: totalProtein,
                 goal: Goals.dailyProtein,
                 unit: "g",
-                tint: .blue
+                tint: .blue,
+                displayText: proteinDisplayText
             )
         }
         .padding(.vertical, 4)
@@ -307,6 +315,7 @@ private struct ProgressRow: View {
     let goal: Double
     let unit: String
     let tint: Color
+    var displayText: String? = nil
 
     private var ratio: Double { goal > 0 ? min(value / goal, 1.0) : 0 }
     private var displayValue: Int { Int(value.rounded()) }
@@ -317,7 +326,7 @@ private struct ProgressRow: View {
             HStack {
                 Text(label).font(.subheadline)
                 Spacer()
-                Text("\(displayValue) / \(displayGoal) \(unit)")
+                Text(displayText ?? "\(displayValue) / \(displayGoal) \(unit)")
                     .font(.caption)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)

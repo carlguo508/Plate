@@ -3,7 +3,7 @@ import SwiftData
 import PhotosUI
 
 enum MealItemSource {
-    case manual(name: String, calories: Double, protein: Double)
+    case manual(name: String, calories: Double, protein: Double?)
     case recipe(Recipe, servings: Double)
     case recipeSnapshot(Recipe, servings: Double, source: MealItem)
     case ingredientGrams(Ingredient, grams: Double)
@@ -12,9 +12,9 @@ enum MealItemSource {
         name: String,
         description: String,
         calories: Double,
-        protein: Double,
-        carbs: Double,
-        fat: Double,
+        protein: Double?,
+        carbs: Double?,
+        fat: Double?,
         confidence: String,
         advice: String,
         portionNotes: String,
@@ -33,9 +33,9 @@ enum MealItemSource {
                 name: name,
                 description: item.estimatedDescription ?? "",
                 calories: calories,
-                protein: item.estimatedProtein ?? 0,
-                carbs: item.estimatedCarbs ?? 0,
-                fat: item.estimatedFat ?? 0,
+                protein: item.estimatedProtein,
+                carbs: item.estimatedCarbs,
+                fat: item.estimatedFat,
                 confidence: "沿用常用记录",
                 advice: item.estimateAdvice ?? "",
                 portionNotes: item.estimatePortionNotes ?? "",
@@ -54,8 +54,8 @@ enum MealItemSource {
                 description: "",
                 calories: calories,
                 protein: protein,
-                carbs: 0,
-                fat: 0,
+                carbs: nil,
+                fat: nil,
                 confidence: "手动记录",
                 advice: "",
                 portionNotes: ""
@@ -244,7 +244,7 @@ private struct QuickMealForm: View {
                     onPick(.manual(
                         name: trimmedName,
                         calories: Double(caloriesText) ?? 0,
-                        protein: Double(proteinText) ?? 0
+                        protein: Double(proteinText)
                     ))
                 }
                 .frame(maxWidth: .infinity)
@@ -483,9 +483,9 @@ private struct EstimatedMealForm: View {
                         name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                         description: description.trimmingCharacters(in: .whitespacesAndNewlines),
                         calories: Double(caloriesText) ?? 0,
-                        protein: Double(proteinText) ?? 0,
-                        carbs: Double(carbsText) ?? 0,
-                        fat: Double(fatText) ?? 0,
+                        protein: Double(proteinText),
+                        carbs: Double(carbsText),
+                        fat: Double(fatText),
                         confidence: confidence,
                         advice: advice,
                         portionNotes: portionNotes,

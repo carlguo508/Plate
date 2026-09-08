@@ -308,7 +308,38 @@ struct ServiceTests {
         #expect(item.protein == 45)
         #expect(item.carbs == 0)
         #expect(item.fat == 0)
+        #expect(item.estimatedCarbs == nil)
+        #expect(item.estimatedFat == nil)
         #expect(item.estimateConfidence == "手动记录")
+    }
+
+    @Test func caloriesOnlyMealKeepsUnknownProteinThroughReuseAndCopy() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let sourceMeal = MealEntry(date: .now, mealType: .lunch)
+        let sourceItem = MealItemSource.manual(
+            name: "Chipotle 鸡肉碗",
+            calories: 720,
+            protein: nil
+        ).makeMealItem()
+        sourceItem.meal = sourceMeal
+        sourceMeal.items.append(sourceItem)
+        context.insert(sourceMeal)
+        try context.save()
+
+        let reused = try #require(MealItemSource(reusing: sourceItem)).makeMealItem()
+        let copiedMeal = MealCopyService.copy(
+            sourceMeal,
+            to: Calendar.current.date(byAdding: .day, value: 1, to: .now)!,
+            in: context
+        )
+        let copied = try #require(copiedMeal.items.first)
+
+        #expect(sourceItem.estimatedProtein == nil)
+        #expect(sourceMeal.knownProteinTotal == nil)
+        #expect(reused.estimatedProtein == nil)
+        #expect(copied.estimatedProtein == nil)
+        #expect(copied.calories == 720)
     }
 
     // MARK: - DefaultTemplate

@@ -23,11 +23,14 @@ struct ReviewView: View {
         return (0..<range.days).reversed().map { offset in
             let date = cal.date(byAdding: .day, value: -offset, to: today)!
             let dayMeals = meals.filter { cal.isDate($0.date, inSameDayAs: date) }
+            let dayItems = dayMeals.flatMap(\.items)
             let dayWorkouts = workouts.filter { cal.isDate($0.date, inSameDayAs: date) }
             return DayBucket(
                 date: date,
                 kcal: dayMeals.reduce(0) { $0 + $1.totalCalories },
-                protein: dayMeals.reduce(0) { $0 + $1.totalProtein },
+                protein: dayItems.isEmpty || dayItems.contains(where: { $0.knownProtein == nil })
+                    ? nil
+                    : dayItems.compactMap(\.knownProtein).reduce(0, +),
                 hasNutrition: !dayMeals.isEmpty,
                 hadStrength: dayWorkouts.contains { $0.kind == .strength },
                 hadCardio: dayWorkouts.contains { $0.kind == .cardio }
@@ -89,19 +92,26 @@ struct ReviewView: View {
     }
 
     private var proteinChart: some View {
-        Chart(recordedNutritionDays) { bucket in
-            LineMark(
-                x: .value("日期", bucket.date, unit: .day),
-                y: .value("蛋白", bucket.protein)
-            )
-            .foregroundStyle(.blue)
-            PointMark(
-                x: .value("日期", bucket.date, unit: .day),
-                y: .value("蛋白", bucket.protein)
-            )
-            .foregroundStyle(.blue)
+        Group {
+            if recordedProteinDays.isEmpty {
+                ContentUnavailableView("还没有完整的蛋白质记录", systemImage: "chart.line.uptrend.xyaxis")
+                    .frame(height: 160)
+            } else {
+                Chart(recordedProteinDays) { bucket in
+                    LineMark(
+                        x: .value("日期", bucket.date, unit: .day),
+                        y: .value("蛋白", bucket.protein ?? 0)
+                    )
+                    .foregroundStyle(.blue)
+                    PointMark(
+                        x: .value("日期", bucket.date, unit: .day),
+                        y: .value("蛋白", bucket.protein ?? 0)
+                    )
+                    .foregroundStyle(.blue)
+                }
+                .frame(height: 160)
+            }
         }
-        .frame(height: 160)
     }
 
     private var trainingChart: some View {
@@ -205,8 +215,9 @@ struct ReviewView: View {
     private var summaryCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             stat("日均热量", String(Int(avgKcal.rounded())) + " kcal")
-            stat("日均蛋白", String(Int(avgProtein.rounded())) + " g")
+            stat("日均蛋白", recordedProteinDays.isEmpty ? "未记录" : String(Int(avgProtein.rounded())) + " g")
             stat("饮食记录", "\(recordedNutritionDays.count) / \(range.days) 天")
+            stat("蛋白记录", "\(recordedProteinDays.count) / \(range.days) 天")
             stat("训练天数", "\(trainingDayCount) / \(range.days)")
         }
         .padding(.vertical, 4)
@@ -223,11 +234,14 @@ struct ReviewView: View {
     // MARK: - Aggregates
 
     private var recordedNutritionDays: [DayBucket] { dayBuckets.filter(\.hasNutrition) }
+    private var recordedProteinDays: [DayBucket] { dayBuckets.filter { $0.protein != nil } }
     private var avgKcal: Double {
         recordedNutritionDays.isEmpty ? 0 : recordedNutritionDays.reduce(0) { $0 + $1.kcal } / Double(recordedNutritionDays.count)
     }
     private var avgProtein: Double {
-        recordedNutritionDays.isEmpty ? 0 : recordedNutritionDays.reduce(0) { $0 + $1.protein } / Double(recordedNutritionDays.count)
+        recordedProteinDays.isEmpty
+            ? 0
+            : recordedProteinDays.reduce(0) { $0 + ($1.protein ?? 0) } / Double(recordedProteinDays.count)
     }
     private var trainingDayCount: Int {
         dayBuckets.filter { $0.hadStrength || $0.hadCardio }.count
@@ -286,7 +300,7 @@ private struct WeightPoint: Identifiable {
 private struct DayBucket: Identifiable {
     let date: Date
     let kcal: Double
-    let protein: Double
+    let protein: Double?
     let hasNutrition: Bool
     let hadStrength: Bool
     let hadCardio: Bool
