@@ -12,17 +12,15 @@ struct ContentView: View {
         TabView {
             TodayView()
                 .id(dayKey)
-                .tabItem { Label("今天", systemImage: "calendar") }
-            RecipeListView()
-                .tabItem { Label("菜谱", systemImage: "fork.knife") }
+                .tabItem { Label("今天", systemImage: "circle.inset.filled") }
             DiaryView()
                 .id(dayKey)
-                .tabItem { Label("饮食", systemImage: "book.pages") }
+                .tabItem { Label("饮食", systemImage: "fork.knife") }
             TrainingTabView()
                 .id(dayKey)
                 .tabItem { Label("训练", systemImage: "dumbbell") }
             ReviewView()
-                .tabItem { Label("回顾", systemImage: "chart.line.uptrend.xyaxis") }
+                .tabItem { Label("趋势", systemImage: "chart.line.uptrend.xyaxis") }
         }
         .onReceive(
             NotificationCenter.default

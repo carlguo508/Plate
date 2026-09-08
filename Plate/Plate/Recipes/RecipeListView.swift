@@ -3,6 +3,7 @@ import SwiftData
 
 struct RecipeListView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Query(sort: \Recipe.updatedAt, order: .reverse) private var recipes: [Recipe]
 
     @State private var searchText: String = ""
@@ -31,8 +32,11 @@ struct RecipeListView: View {
                     list
                 }
             }
-            .navigationTitle("菜谱")
+            .navigationTitle("常用餐")
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("完成") { dismiss() }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingNewRecipe = true
@@ -97,11 +101,11 @@ struct RecipeListView: View {
 
     private var emptyState: some View {
         ContentUnavailableView {
-            Label("还没有菜谱", systemImage: "fork.knife")
+            Label("还没有常用餐", systemImage: "fork.knife")
         } description: {
-            Text("点右上角 + 添加你的第一道菜")
+            Text("保存常吃的餐，以后一键记录")
         } actions: {
-            Button("新建菜谱") { showingNewRecipe = true }
+            Button("新建常用餐") { showingNewRecipe = true }
                 .buttonStyle(.borderedProminent)
         }
     }
