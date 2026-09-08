@@ -265,6 +265,83 @@ struct ServiceTests {
         #expect(WeightConvert.formatted(70.55, in: .kg) == "70.5")
     }
 
+    @Test func weightPreferenceDefaultsToPoundsAndPersistsChanges() throws {
+        let suiteName = "WeightPreferenceTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        #expect(WeightPreference.current(in: defaults) == .lb)
+        WeightPreference.set(.kg, in: defaults)
+        #expect(WeightPreference.current(in: defaults) == .kg)
+    }
+
+    // MARK: - Workout templates
+
+    @Test func workoutTemplatesSaveReplaceAndDelete() throws {
+        let suiteName = "WorkoutTemplateTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let original = [
+            WorkoutTemplateSet(exerciseName: "卧推", weightKg: 60, reps: 8),
+            WorkoutTemplateSet(exerciseName: "卧推", weightKg: 60, reps: 8),
+        ]
+        var templates = WorkoutTemplateStore.save(name: "胸", sets: original, in: defaults)
+        #expect(templates.count == 1)
+        #expect(templates.first?.sets == original)
+
+        let replacement = [WorkoutTemplateSet(exerciseName: "上斜卧推", weightKg: 25, reps: 10)]
+        templates = WorkoutTemplateStore.save(name: " 胸 ", sets: replacement, in: defaults)
+        #expect(templates.count == 1)
+        #expect(templates.first?.name == "胸")
+        #expect(templates.first?.sets == replacement)
+
+        let saved = try #require(templates.first)
+        templates = WorkoutTemplateStore.delete(saved, from: defaults)
+        #expect(templates.isEmpty)
+    }
+
+    @Test func manualMealSourceStoresOnlyKnownNutrition() {
+        let item = MealItemSource.manual(name: "Chipotle 鸡肉碗", calories: 720, protein: 45).makeMealItem()
+        #expect(item.historicalName == "Chipotle 鸡肉碗")
+        #expect(item.calories == 720)
+        #expect(item.protein == 45)
+        #expect(item.carbs == 0)
+        #expect(item.fat == 0)
+        #expect(item.estimatedCarbs == nil)
+        #expect(item.estimatedFat == nil)
+        #expect(item.estimateConfidence == "手动记录")
+    }
+
+    @Test func caloriesOnlyMealKeepsUnknownProteinThroughReuseAndCopy() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let sourceMeal = MealEntry(date: .now, mealType: .lunch)
+        let sourceItem = MealItemSource.manual(
+            name: "Chipotle 鸡肉碗",
+            calories: 720,
+            protein: nil
+        ).makeMealItem()
+        sourceItem.meal = sourceMeal
+        sourceMeal.items.append(sourceItem)
+        context.insert(sourceMeal)
+        try context.save()
+
+        let reused = try #require(MealItemSource(reusing: sourceItem)).makeMealItem()
+        let copiedMeal = MealCopyService.copy(
+            sourceMeal,
+            to: Calendar.current.date(byAdding: .day, value: 1, to: .now)!,
+            in: context
+        )
+        let copied = try #require(copiedMeal.items.first)
+
+        #expect(sourceItem.estimatedProtein == nil)
+        #expect(sourceMeal.knownProteinTotal == nil)
+        #expect(reused.estimatedProtein == nil)
+        #expect(copied.estimatedProtein == nil)
+        #expect(copied.calories == 720)
+    }
+
     // MARK: - DefaultTemplate
 
     @Test func strengthTypeRawRoundTrip() {

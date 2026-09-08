@@ -6,6 +6,7 @@ struct TrainingTabView: View {
     @State private var logDate = Calendar.current.startOfDay(for: .now)
     @State private var showingStrengthLog = false
     @State private var showingCardioLog = false
+    @State private var weightUnit = WeightPreference.current
 
     private var todaysWorkouts: [WorkoutEntry] {
         workouts.filter { Calendar.current.isDateInToday($0.date) }
@@ -18,6 +19,19 @@ struct TrainingTabView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("重量单位") {
+                    Picker("重量单位", selection: $weightUnit) {
+                        ForEach(WeightUnit.allCases) { unit in
+                            Text(unit.label).tag(unit)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("training-weight-unit")
+                    .onChange(of: weightUnit) { _, unit in
+                        WeightPreference.current = unit
+                    }
+                }
+
                 Section("今天") {
                     if todaysWorkouts.isEmpty {
                         Text("还没有训练记录")
@@ -69,7 +83,9 @@ struct TrainingTabView: View {
                 }
             }
             .navigationTitle("训练")
-            .sheet(isPresented: $showingStrengthLog) {
+            .sheet(isPresented: $showingStrengthLog, onDismiss: {
+                weightUnit = WeightPreference.current
+            }) {
                 StrengthLogSheet(date: logDate)
             }
             .sheet(isPresented: $showingCardioLog) {

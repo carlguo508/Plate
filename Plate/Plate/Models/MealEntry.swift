@@ -22,6 +22,11 @@ final class MealEntry {
     var totalProtein: Double { items.reduce(0) { $0 + $1.protein } }
     var totalCarbs: Double { items.reduce(0) { $0 + $1.carbs } }
     var totalFat: Double { items.reduce(0) { $0 + $1.fat } }
+    var knownProteinTotal: Double? {
+        guard !items.isEmpty, !items.contains(where: { $0.knownProtein == nil }) else { return nil }
+        return items.compactMap(\.knownProtein).reduce(0, +)
+    }
+    var recordedProteinMinimum: Double { items.compactMap(\.knownProtein).reduce(0, +) }
 }
 
 /// One thing eaten: a recipe portion, a loose ingredient, or a saved estimate.
@@ -84,9 +89,9 @@ final class MealItem {
         estimatedName: String,
         description: String,
         calories: Double,
-        protein: Double,
-        carbs: Double,
-        fat: Double,
+        protein: Double?,
+        carbs: Double?,
+        fat: Double?,
         confidence: String = "手动估算",
         advice: String = "",
         portionNotes: String = "",
@@ -110,6 +115,10 @@ final class MealItem {
     var protein: Double { estimatedProtein ?? nutrient(\Recipe.perServingProtein, \Ingredient.proteinPer100g) }
     var carbs: Double { estimatedCarbs ?? nutrient(\Recipe.perServingCarbs, \Ingredient.carbsPer100g) }
     var fat: Double { estimatedFat ?? nutrient(\Recipe.perServingFat, \Ingredient.fatPer100g) }
+    var knownProtein: Double? {
+        if recipe != nil || ingredient != nil { return protein }
+        return estimatedProtein
+    }
     var historicalName: String? { estimatedName ?? recipe?.name ?? ingredient?.name }
 
     private func nutrient(
