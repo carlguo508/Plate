@@ -17,10 +17,10 @@ enum RecipeDeletionService {
         guard let recipe = item.recipe, let servings = item.servings else { return }
         item.estimatedName = recipe.name
         item.estimatedDescription = servings == 1 ? "1 份" : String(format: "%.1f 份", servings)
-        item.estimatedCalories = recipe.perServingCalories * servings
-        item.estimatedProtein = recipe.perServingProtein * servings
-        item.estimatedCarbs = recipe.perServingCarbs * servings
-        item.estimatedFat = recipe.perServingFat * servings
+        item.estimatedCalories = item.estimatedCalories ?? recipe.perServingCalories * servings
+        item.estimatedProtein = item.estimatedProtein ?? recipe.perServingProtein * servings
+        item.estimatedCarbs = item.estimatedCarbs ?? recipe.perServingCarbs * servings
+        item.estimatedFat = item.estimatedFat ?? recipe.perServingFat * servings
         item.estimateConfidence = "菜谱已删除，保留当时数值"
         item.recipe = nil
         item.servings = nil

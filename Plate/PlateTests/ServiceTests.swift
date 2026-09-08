@@ -101,6 +101,12 @@ struct ServiceTests {
         #expect(item.calories == 750)
         #expect(item.protein == 52.5)
         #expect(recipe.perServingCalories == 620)
+
+        RecipeDeletionService.delete(recipe, in: ctx)
+        try ctx.save()
+        #expect(item.calories == 750)
+        #expect(item.protein == 52.5)
+        #expect(item.recipe == nil)
     }
 
     // MARK: - WeekPlanService
