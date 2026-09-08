@@ -13,7 +13,7 @@ final class PlateUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    /// Walks every tab and the core "add food" flow so a broken screen fails fast.
+    /// Walks every MVP tab and the core food/training flows so a broken screen fails fast.
     @MainActor
     func testTabsAndCoreScreensSmoke() throws {
         let app = XCUIApplication()
@@ -23,31 +23,34 @@ final class PlateUITests: XCTestCase {
         XCTAssertTrue(tabBar.waitForExistence(timeout: 10))
 
         // 今天
-        XCTAssertTrue(app.staticTexts["今日热量"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["今日训练"].exists)
+        XCTAssertTrue(app.staticTexts["饮食"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["训练"].exists)
         XCTAssertTrue(app.staticTexts["体重"].exists)
-
-        // 菜谱
-        tabBar.buttons["菜谱"].tap()
-        XCTAssertTrue(app.navigationBars["菜谱"].waitForExistence(timeout: 5))
-
-        // 饮食 → 加食物 → 食材列表（内置食材应已种子化）
-        tabBar.buttons["饮食"].tap()
-        XCTAssertTrue(app.navigationBars["饮食"].waitForExistence(timeout: 5))
-        app.buttons.matching(NSPredicate(format: "label == %@", "加食物")).firstMatch.tap()
+        app.buttons["记一餐"].tap()
+        app.buttons["早餐"].tap()
         XCTAssertTrue(app.navigationBars["加食物"].waitForExistence(timeout: 5))
-        app.buttons["食材"].tap()
-        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 5), "内置食材列表不应为空")
+        XCTAssertTrue(app.buttons["AI 估算"].exists)
         app.buttons["取消"].tap()
 
-        // 训练（本周计划应自动生成 7 天）
+        // 饮食保留为按日期统一补录和修改的入口
+        tabBar.buttons["饮食"].tap()
+        XCTAssertTrue(app.navigationBars["饮食"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["常用餐"].exists)
+
+        // 训练直接进入记录，不再先生成周计划
         tabBar.buttons["训练"].tap()
         XCTAssertTrue(app.navigationBars["训练"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["周一"].waitForExistence(timeout: 5))
+        let strengthButton = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "力量训练")
+        ).firstMatch
+        XCTAssertTrue(strengthButton.waitForExistence(timeout: 5))
+        strengthButton.tap()
+        XCTAssertTrue(app.navigationBars["力量记录"].waitForExistence(timeout: 5))
+        app.buttons["完成"].tap()
 
-        // 回顾
-        tabBar.buttons["回顾"].tap()
-        XCTAssertTrue(app.navigationBars["回顾"].waitForExistence(timeout: 5))
+        // 趋势
+        tabBar.buttons["趋势"].tap()
+        XCTAssertTrue(app.navigationBars["趋势"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["热量摄入"].waitForExistence(timeout: 5))
     }
 
