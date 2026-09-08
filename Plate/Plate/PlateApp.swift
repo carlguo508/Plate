@@ -19,7 +19,9 @@ struct PlateApp: App {
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
-            return try ModelContainer(for: schema, configurations: [configuration])
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            MealNutritionSnapshotService.backfillMissingRecipeSnapshots(in: container.mainContext)
+            return container
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
@@ -30,9 +32,6 @@ struct PlateApp: App {
             ContentView()
                 .task {
                     SeedData.seedIfNeeded(context: sharedModelContainer.mainContext)
-                    MealNutritionSnapshotService.backfillMissingRecipeSnapshots(
-                        in: sharedModelContainer.mainContext
-                    )
                 }
         }
         .modelContainer(sharedModelContainer)
