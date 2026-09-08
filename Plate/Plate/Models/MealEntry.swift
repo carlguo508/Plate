@@ -51,6 +51,12 @@ final class MealItem {
     init(recipe: Recipe, servings: Double) {
         self.recipe = recipe
         self.servings = servings
+        // A meal log is historical data. Snapshot nutrition at logging time so later edits to
+        // the reusable recipe do not silently rewrite past intake and trend charts.
+        self.estimatedCalories = recipe.perServingCalories * servings
+        self.estimatedProtein = recipe.perServingProtein * servings
+        self.estimatedCarbs = recipe.perServingCarbs * servings
+        self.estimatedFat = recipe.perServingFat * servings
     }
 
     init(ingredient: Ingredient, grams: Double) {

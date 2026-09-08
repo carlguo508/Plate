@@ -78,6 +78,31 @@ struct ServiceTests {
         #expect(try ctx.fetch(FetchDescriptor<MealItem>()).isEmpty)
     }
 
+    @Test func editingRecipeDoesNotRewriteLoggedMealNutrition() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let recipe = Recipe(
+            name: "固定早餐",
+            manualCaloriesPerServing: 500,
+            manualProteinPerServing: 35
+        )
+        let item = MealItem(recipe: recipe, servings: 1.5)
+        let meal = MealEntry(mealType: .breakfast)
+        item.meal = meal
+        meal.items.append(item)
+        ctx.insert(recipe)
+        ctx.insert(meal)
+        try ctx.save()
+
+        recipe.manualCaloriesPerServing = 620
+        recipe.manualProteinPerServing = 42
+        try ctx.save()
+
+        #expect(item.calories == 750)
+        #expect(item.protein == 52.5)
+        #expect(recipe.perServingCalories == 620)
+    }
+
     // MARK: - WeekPlanService
 
     @Test func mondayStartNormalizesMidweekDates() {
