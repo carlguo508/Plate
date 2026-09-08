@@ -109,7 +109,7 @@ struct MealItemPickerView: View {
         case frequent = "常用"
         case recipes = "菜谱"
         case ingredients = "食材"
-        case estimate = "AI 记录"
+        case estimate = "AI 估算"
         var id: String { rawValue }
     }
 
@@ -379,18 +379,13 @@ private struct EstimatedMealForm: View {
             Section("大致营养") {
                 nutritionField("热量", text: $caloriesText, unit: "kcal")
                 nutritionField("蛋白质", text: $proteinText, unit: "g")
-                nutritionField("碳水", text: $carbsText, unit: "g")
-                nutritionField("脂肪", text: $fatText, unit: "g")
                 if !confidence.isEmpty {
-                    LabeledContent("可信度", value: confidence)
-                }
-                if !portionNotes.isEmpty {
-                    Text(portionNotes)
+                    Label(confidence, systemImage: "wand.and.stars")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                if !advice.isEmpty {
-                    Text(advice)
+                if !portionNotes.isEmpty {
+                    Text(portionNotes)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

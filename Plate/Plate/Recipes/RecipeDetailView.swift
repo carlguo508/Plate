@@ -15,9 +15,11 @@ struct RecipeDetailView: View {
                 nutritionCard
             }
 
-            Section("食材") {
-                ForEach(recipe.ingredients) { item in
-                    IngredientRow(item: item, recipeTotalCalories: recipe.totalCalories)
+            if !recipe.ingredients.isEmpty {
+                Section("食材") {
+                    ForEach(recipe.ingredients) { item in
+                        IngredientRow(item: item, recipeTotalCalories: recipe.totalCalories)
+                    }
                 }
             }
 
@@ -75,11 +77,13 @@ struct RecipeDetailView: View {
 
     private var nutritionCard: some View {
         VStack(spacing: 12) {
-            Picker("", selection: $perServing) {
-                Text("每份").tag(true)
-                Text("总计").tag(false)
+            if recipe.manualCaloriesPerServing == nil {
+                Picker("", selection: $perServing) {
+                    Text("每份").tag(true)
+                    Text("总计").tag(false)
+                }
+                .pickerStyle(.segmented)
             }
-            .pickerStyle(.segmented)
 
             HStack(spacing: 0) {
                 nutrientCell(
@@ -93,24 +97,28 @@ struct RecipeDetailView: View {
                     String(format: "%.1f", perServing ? recipe.perServingProtein : recipe.totalProtein),
                     "g"
                 )
-                Divider()
-                nutrientCell(
-                    "碳水",
-                    String(format: "%.1f", perServing ? recipe.perServingCarbs : recipe.totalCarbs),
-                    "g"
-                )
-                Divider()
-                nutrientCell(
-                    "脂肪",
-                    String(format: "%.1f", perServing ? recipe.perServingFat : recipe.totalFat),
-                    "g"
-                )
+                if recipe.manualCaloriesPerServing == nil {
+                    Divider()
+                    nutrientCell(
+                        "碳水",
+                        String(format: "%.1f", perServing ? recipe.perServingCarbs : recipe.totalCarbs),
+                        "g"
+                    )
+                    Divider()
+                    nutrientCell(
+                        "脂肪",
+                        String(format: "%.1f", perServing ? recipe.perServingFat : recipe.totalFat),
+                        "g"
+                    )
+                }
             }
             .frame(height: 56)
 
-            Text("一份 = 1 / \(recipe.servings) 锅")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            if recipe.manualCaloriesPerServing == nil {
+                Text("一份 = 1 / \(recipe.servings) 锅")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

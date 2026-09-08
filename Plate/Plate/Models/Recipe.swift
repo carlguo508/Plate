@@ -9,6 +9,9 @@ final class Recipe {
     var tags: [String]
     var createdAt: Date
     var updatedAt: Date
+    /// Optional quick-preset values. When present, these are the per-serving source of truth.
+    var manualCaloriesPerServing: Double?
+    var manualProteinPerServing: Double?
 
     @Relationship(deleteRule: .cascade, inverse: \RecipeIngredient.recipe)
     var ingredients: [RecipeIngredient] = []
@@ -21,6 +24,8 @@ final class Recipe {
         steps: String = "",
         servings: Int = 1,
         tags: [String] = [],
+        manualCaloriesPerServing: Double? = nil,
+        manualProteinPerServing: Double? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now
     ) {
@@ -28,6 +33,8 @@ final class Recipe {
         self.steps = steps
         self.servings = servings
         self.tags = tags
+        self.manualCaloriesPerServing = manualCaloriesPerServing
+        self.manualProteinPerServing = manualProteinPerServing
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -46,8 +53,12 @@ final class Recipe {
     var totalCarbs: Double { ingredients.reduce(0) { $0 + nutrientTotal($1, \Ingredient.carbsPer100g) } }
     var totalFat: Double { ingredients.reduce(0) { $0 + nutrientTotal($1, \Ingredient.fatPer100g) } }
 
-    var perServingCalories: Double { servings > 0 ? totalCalories / Double(servings) : 0 }
-    var perServingProtein: Double { servings > 0 ? totalProtein / Double(servings) : 0 }
+    var perServingCalories: Double {
+        manualCaloriesPerServing ?? (servings > 0 ? totalCalories / Double(servings) : 0)
+    }
+    var perServingProtein: Double {
+        manualProteinPerServing ?? (servings > 0 ? totalProtein / Double(servings) : 0)
+    }
     var perServingCarbs: Double { servings > 0 ? totalCarbs / Double(servings) : 0 }
     var perServingFat: Double { servings > 0 ? totalFat / Double(servings) : 0 }
 
