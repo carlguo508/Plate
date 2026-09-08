@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 enum WorkoutDayService {
-    /// Keeps at most one workout of `kind` on the day and removes the other type.
+    /// Keeps at most one workout of `kind` on the day without deleting a different workout type.
     static func enforceSingleWorkout(
         kind: WorkoutKind,
         on date: Date,
@@ -18,10 +18,11 @@ enum WorkoutDayService {
         var keptMatchingEntry = false
 
         for entry in entries {
-            if entry.kind == kind, !keptMatchingEntry {
-                keptMatchingEntry = true
-            } else {
+            guard entry.kind == kind else { continue }
+            if keptMatchingEntry {
                 context.delete(entry)
+            } else {
+                keptMatchingEntry = true
             }
         }
     }
