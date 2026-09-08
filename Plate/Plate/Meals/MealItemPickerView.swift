@@ -205,9 +205,17 @@ private struct QuickMealForm: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(option.name)
                                         .foregroundStyle(.primary)
-                                    Text("\(NutritionFormat.kcal(option.item.calories)) kcal · 蛋白 \(NutritionFormat.grams(option.item.protein))")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                    HStack(spacing: 4) {
+                                        Text("\(NutritionFormat.kcal(option.item.calories)) kcal")
+                                        Text("·")
+                                        if let protein = option.item.knownProtein {
+                                            Text("蛋白 \(NutritionFormat.grams(protein))")
+                                        } else {
+                                            Text("蛋白未填")
+                                        }
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Image(systemName: "plus.circle.fill")
