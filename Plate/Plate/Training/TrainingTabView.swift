@@ -83,7 +83,9 @@ struct TrainingTabView: View {
                 }
             }
             .navigationTitle("训练")
-            .sheet(isPresented: $showingStrengthLog) {
+            .sheet(isPresented: $showingStrengthLog, onDismiss: {
+                weightUnit = WeightPreference.current
+            }) {
                 StrengthLogSheet(date: logDate)
             }
             .sheet(isPresented: $showingCardioLog) {
