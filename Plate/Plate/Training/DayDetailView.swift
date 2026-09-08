@@ -191,7 +191,7 @@ struct DayDetailView: View {
 
 // MARK: - Strength log
 
-private struct StrengthLogSheet: View {
+struct StrengthLogSheet: View {
     let date: Date
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -238,12 +238,41 @@ private struct StrengthLogSheet: View {
                 }
                 if let workout {
                     Section("已记录的组") {
-                        ForEach(workout.sets.sorted(by: { $0.order < $1.order })) { set in
-                            HStack {
-                                Text(set.exerciseName)
-                                Spacer()
-                                Text("\(WeightConvert.formatted(set.weightKg, in: WeightPreference.current)) \(WeightPreference.current.label) × \(set.reps)")
+                        ForEach(exerciseNames(in: workout), id: \.self) { name in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(name)
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                ForEach(sets(named: name, in: workout)) { set in
+                                    HStack(spacing: 8) {
+                                        TextField("重量", text: weightBinding(for: set))
+                                            .keyboardType(.decimalPad)
+                                            .multilineTextAlignment(.trailing)
+                                            .frame(maxWidth: .infinity)
+                                        Text(WeightPreference.current.label)
+                                            .foregroundStyle(.secondary)
+                                        Text("×")
+                                            .foregroundStyle(.secondary)
+                                        TextField("次数", text: repsBinding(for: set))
+                                            .keyboardType(.numberPad)
+                                            .multilineTextAlignment(.trailing)
+                                            .frame(width: 52)
+                                        Button(role: .destructive) {
+                                            context.delete(set)
+                                            try? context.save()
+                                        } label: {
+                                            Image(systemName: "trash")
+                                        }
+                                        .buttonStyle(.borderless)
+                                    }
                                     .monospacedDigit()
+                                }
+                                Button {
+                                    duplicateLastSet(named: name, in: workout)
+                                } label: {
+                                    Label("再加一组", systemImage: "plus")
+                                        .font(.caption)
+                                }
                             }
                         }
                     }
@@ -286,6 +315,55 @@ private struct StrengthLogSheet: View {
 
     private func distinctExerciseCount(_ w: WorkoutEntry) -> Int {
         Set(w.sets.map(\.exerciseName)).count
+    }
+
+    private func exerciseNames(in workout: WorkoutEntry) -> [String] {
+        var seen = Set<String>()
+        return workout.sets
+            .sorted(by: { $0.order < $1.order })
+            .compactMap { seen.insert($0.exerciseName).inserted ? $0.exerciseName : nil }
+    }
+
+    private func sets(named name: String, in workout: WorkoutEntry) -> [ExerciseSet] {
+        workout.sets
+            .filter { $0.exerciseName == name }
+            .sorted { $0.order < $1.order }
+    }
+
+    private func weightBinding(for set: ExerciseSet) -> Binding<String> {
+        Binding(
+            get: { WeightConvert.formatted(set.weightKg, in: WeightPreference.current) },
+            set: { value in
+                guard let input = Double(value), input >= 0 else { return }
+                set.weightKg = WeightConvert.toKg(input, from: WeightPreference.current)
+                try? context.save()
+            }
+        )
+    }
+
+    private func repsBinding(for set: ExerciseSet) -> Binding<String> {
+        Binding(
+            get: { String(set.reps) },
+            set: { value in
+                guard let reps = Int(value), reps > 0 else { return }
+                set.reps = reps
+                try? context.save()
+            }
+        )
+    }
+
+    private func duplicateLastSet(named name: String, in workout: WorkoutEntry) {
+        guard let source = sets(named: name, in: workout).last else { return }
+        let copy = ExerciseSet(
+            exerciseName: source.exerciseName,
+            weightKg: source.weightKg,
+            reps: source.reps,
+            order: workout.sets.count
+        )
+        copy.workout = workout
+        workout.sets.append(copy)
+        context.insert(copy)
+        try? context.save()
     }
 
     /// Copy each set from a prior workout into today's, preserving exercise order and weight/reps.
@@ -341,7 +419,7 @@ private struct StrengthLogSheet: View {
 
 // MARK: - Cardio log
 
-private struct CardioLogSheet: View {
+struct CardioLogSheet: View {
     let date: Date
     let defaultActivity: String
     let existing: WorkoutEntry?
