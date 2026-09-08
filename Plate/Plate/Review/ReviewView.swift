@@ -28,6 +28,7 @@ struct ReviewView: View {
                 date: date,
                 kcal: dayMeals.reduce(0) { $0 + $1.totalCalories },
                 protein: dayMeals.reduce(0) { $0 + $1.totalProtein },
+                hasNutrition: !dayMeals.isEmpty,
                 hadStrength: dayWorkouts.contains { $0.kind == .strength },
                 hadCardio: dayWorkouts.contains { $0.kind == .cardio }
             )
@@ -57,7 +58,7 @@ struct ReviewView: View {
                 Section { summaryCard }
                     .listRowBackground(Color.clear)
             }
-            .navigationTitle("回顾")
+            .navigationTitle("趋势")
         }
     }
 
@@ -65,7 +66,7 @@ struct ReviewView: View {
 
     private var kcalChart: some View {
         Chart {
-            ForEach(dayBuckets) { bucket in
+            ForEach(recordedNutritionDays) { bucket in
                 BarMark(
                     x: .value("日期", bucket.date, unit: .day),
                     y: .value("热量", bucket.kcal)
@@ -88,7 +89,7 @@ struct ReviewView: View {
     }
 
     private var proteinChart: some View {
-        Chart(dayBuckets) { bucket in
+        Chart(recordedNutritionDays) { bucket in
             LineMark(
                 x: .value("日期", bucket.date, unit: .day),
                 y: .value("蛋白", bucket.protein)
@@ -205,6 +206,7 @@ struct ReviewView: View {
         VStack(alignment: .leading, spacing: 6) {
             stat("日均热量", String(Int(avgKcal.rounded())) + " kcal")
             stat("日均蛋白", String(Int(avgProtein.rounded())) + " g")
+            stat("饮食记录", "\(recordedNutritionDays.count) / \(range.days) 天")
             stat("训练天数", "\(trainingDayCount) / \(range.days)")
         }
         .padding(.vertical, 4)
@@ -220,12 +222,12 @@ struct ReviewView: View {
 
     // MARK: - Aggregates
 
-    private var nonEmptyDays: [DayBucket] { dayBuckets.filter { $0.kcal > 0 } }
+    private var recordedNutritionDays: [DayBucket] { dayBuckets.filter(\.hasNutrition) }
     private var avgKcal: Double {
-        nonEmptyDays.isEmpty ? 0 : nonEmptyDays.reduce(0) { $0 + $1.kcal } / Double(nonEmptyDays.count)
+        recordedNutritionDays.isEmpty ? 0 : recordedNutritionDays.reduce(0) { $0 + $1.kcal } / Double(recordedNutritionDays.count)
     }
     private var avgProtein: Double {
-        nonEmptyDays.isEmpty ? 0 : nonEmptyDays.reduce(0) { $0 + $1.protein } / Double(nonEmptyDays.count)
+        recordedNutritionDays.isEmpty ? 0 : recordedNutritionDays.reduce(0) { $0 + $1.protein } / Double(recordedNutritionDays.count)
     }
     private var trainingDayCount: Int {
         dayBuckets.filter { $0.hadStrength || $0.hadCardio }.count
@@ -285,6 +287,7 @@ private struct DayBucket: Identifiable {
     let date: Date
     let kcal: Double
     let protein: Double
+    let hasNutrition: Bool
     let hadStrength: Bool
     let hadCardio: Bool
     var id: Date { date }
