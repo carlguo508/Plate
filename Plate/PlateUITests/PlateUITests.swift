@@ -11,6 +11,18 @@ final class PlateUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    @MainActor
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        for _ in 0..<6 {
+            if element.exists && element.isHittable {
+                return true
+            }
+            app.swipeUp()
+        }
+        return element.waitForExistence(timeout: 2) && element.isHittable
     }
 
     /// Walks every MVP tab and the core food/training flows so a broken screen fails fast.
@@ -23,14 +35,15 @@ final class PlateUITests: XCTestCase {
         XCTAssertTrue(tabBar.waitForExistence(timeout: 10))
 
         // 今天
+        let todayTab = tabBar.buttons["今天"]
+        XCTAssertTrue(todayTab.waitForExistence(timeout: 5))
+        todayTab.tap()
+        XCTAssertTrue(app.navigationBars["今天"].waitForExistence(timeout: 5))
         let logMealButton = app.buttons["记一餐"]
-        XCTAssertTrue(logMealButton.waitForExistence(timeout: 10))
+        XCTAssertTrue(reveal(logMealButton, in: app))
         logMealButton.tap()
         let breakfastButton = app.buttons["早餐"]
-        if !breakfastButton.waitForExistence(timeout: 3) {
-            logMealButton.tap()
-        }
-        XCTAssertTrue(breakfastButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(breakfastButton.waitForExistence(timeout: 10))
         breakfastButton.tap()
         XCTAssertTrue(app.navigationBars["加食物"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.textFields["quick-meal-name"].waitForExistence(timeout: 5))
