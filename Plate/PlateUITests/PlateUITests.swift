@@ -29,6 +29,8 @@ final class PlateUITests: XCTestCase {
         app.buttons["记一餐"].tap()
         app.buttons["早餐"].tap()
         XCTAssertTrue(app.navigationBars["加食物"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["quick-meal-name"].exists)
+        XCTAssertTrue(app.textFields["quick-meal-calories"].exists)
         XCTAssertTrue(app.buttons["AI 估算"].exists)
         app.buttons["取消"].tap()
 
@@ -40,6 +42,7 @@ final class PlateUITests: XCTestCase {
         // 训练直接进入记录，不再先生成周计划
         tabBar.buttons["训练"].tap()
         XCTAssertTrue(app.navigationBars["训练"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.segmentedControls["training-weight-unit"].buttons["lb"].isSelected)
         let strengthButton = app.buttons.matching(
             NSPredicate(format: "label CONTAINS %@", "力量训练")
         ).firstMatch
@@ -101,8 +104,62 @@ final class PlateUITests: XCTestCase {
         XCTAssertTrue(reopenButton.waitForExistence(timeout: 5))
         reopenButton.tap()
         XCTAssertTrue(app.staticTexts[exerciseName].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.textFields["saved-set-weight"].firstMatch.value as? String, "60")
-        XCTAssertEqual(app.textFields["saved-set-reps"].firstMatch.value as? String, "8")
+        XCTAssertTrue(app.textFields.matching(NSPredicate(
+            format: "identifier == %@ AND value == %@", "saved-set-weight", "60"
+        )).firstMatch.exists)
+        XCTAssertTrue(app.textFields.matching(NSPredicate(
+            format: "identifier == %@ AND value == %@", "saved-set-reps", "8"
+        )).firstMatch.exists)
+
+        app.buttons["save-workout-template"].tap()
+        let templateName = "胸模板测试"
+        let templateAlert = app.alerts["保存训练模板"]
+        XCTAssertTrue(templateAlert.waitForExistence(timeout: 5))
+        let templateField = templateAlert.textFields.firstMatch
+        XCTAssertTrue(templateField.waitForExistence(timeout: 5))
+        templateField.tap()
+        templateField.typeText(templateName)
+        templateAlert.buttons["保存"].tap()
+
+        let deleteButtons = app.buttons.matching(identifier: "delete-saved-set")
+        for _ in 0..<20 where deleteButtons.firstMatch.waitForExistence(timeout: 1) {
+            deleteButtons.firstMatch.tap()
+        }
+        XCTAssertFalse(deleteButtons.firstMatch.exists)
+        let templateButton = app.buttons["workout-template-\(templateName)"]
+        XCTAssertTrue(templateButton.waitForExistence(timeout: 5))
+        templateButton.tap()
+        XCTAssertTrue(app.staticTexts[exerciseName].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testQuickMealCanBeLoggedWithCaloriesOnly() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let todayTab = app.tabBars.buttons["今天"]
+        XCTAssertTrue(todayTab.waitForExistence(timeout: 5))
+        todayTab.tap()
+        app.buttons["记一餐"].tap()
+        app.buttons["加餐"].tap()
+        XCTAssertTrue(app.navigationBars["加食物"].waitForExistence(timeout: 5))
+
+        let mealName = "Chipotle UI 测试"
+        let nameField = app.textFields["quick-meal-name"]
+        nameField.tap()
+        nameField.typeText(mealName)
+        let calorieField = app.textFields["quick-meal-calories"]
+        calorieField.tap()
+        calorieField.typeText("720")
+        app.swipeUp()
+
+        let saveButton = app.buttons["save-quick-meal"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5))
+        saveButton.tap()
+        XCTAssertTrue(app.navigationBars["加食物"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", mealName)
+        ).firstMatch.waitForExistence(timeout: 5))
     }
 
     @MainActor

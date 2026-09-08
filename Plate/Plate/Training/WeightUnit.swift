@@ -8,20 +8,27 @@ enum WeightUnit: String, CaseIterable, Identifiable {
 
 /// User's preferred weight unit. Storage is always in kilograms; this only affects display and input.
 enum WeightPreference {
-    private static let key = "training.weightUnit"
-    private static let kgDefaultMigrationKey = "training.weightUnit.defaultedToKg"
+    static let key = "training.weightUnit"
+    private static let lbDefaultMigrationKey = "training.weightUnit.defaultedToLb.v2"
 
     static var current: WeightUnit {
-        get {
-            if !UserDefaults.standard.bool(forKey: kgDefaultMigrationKey) {
-                UserDefaults.standard.set(WeightUnit.kg.rawValue, forKey: key)
-                UserDefaults.standard.set(true, forKey: kgDefaultMigrationKey)
-                return .kg
-            }
-            guard let raw = UserDefaults.standard.string(forKey: key) else { return .kg }
-            return WeightUnit(rawValue: raw) ?? .kg
+        get { current(in: .standard) }
+        set { set(newValue, in: .standard) }
+    }
+
+    static func current(in defaults: UserDefaults) -> WeightUnit {
+        if !defaults.bool(forKey: lbDefaultMigrationKey) {
+            defaults.set(WeightUnit.lb.rawValue, forKey: key)
+            defaults.set(true, forKey: lbDefaultMigrationKey)
+            return .lb
         }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: key) }
+        guard let raw = defaults.string(forKey: key) else { return .lb }
+        return WeightUnit(rawValue: raw) ?? .lb
+    }
+
+    static func set(_ unit: WeightUnit, in defaults: UserDefaults) {
+        defaults.set(unit.rawValue, forKey: key)
+        defaults.set(true, forKey: lbDefaultMigrationKey)
     }
 }
 

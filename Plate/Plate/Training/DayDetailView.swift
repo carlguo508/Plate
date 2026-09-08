@@ -199,11 +199,17 @@ struct StrengthLogSheet: View {
     @State private var exerciseName: String = ""
     @State private var weightText: String = ""
     @State private var repsText: String = ""
+    @State private var weightUnit: WeightUnit
+    @State private var templates: [WorkoutTemplate]
+    @State private var templateName = ""
+    @State private var showingTemplateName = false
 
     @Query private var workouts: [WorkoutEntry]
 
     init(date: Date) {
         self.date = date
+        _weightUnit = State(initialValue: WeightPreference.current)
+        _templates = State(initialValue: WorkoutTemplateStore.load())
         let dayStart = Calendar.current.startOfDay(for: date)
         let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? date
         _workouts = Query(filter: #Predicate<WorkoutEntry> {
@@ -224,6 +230,53 @@ struct StrengthLogSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("重量单位") {
+                    Picker("重量单位", selection: $weightUnit) {
+                        ForEach(WeightUnit.allCases) { unit in
+                            Text(unit.label).tag(unit)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("strength-weight-unit")
+                    .onChange(of: weightUnit, changeWeightUnit)
+                }
+                if workout?.sets.isEmpty ?? true {
+                    if !templates.isEmpty {
+                        Section("从模板开始") {
+                            ForEach(templates) { template in
+                                Button {
+                                    apply(template)
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(template.name)
+                                                .foregroundStyle(.primary)
+                                            Text("\(Set(template.sets.map(\.exerciseName)).count) 个动作 · \(template.sets.count) 组")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "plus.circle.fill")
+                                    }
+                                }
+                                .accessibilityIdentifier("workout-template-\(template.name)")
+                            }
+                            .onDelete(perform: deleteTemplates)
+                        }
+                    }
+                } else {
+                    Section {
+                        Button {
+                            templateName = ""
+                            showingTemplateName = true
+                        } label: {
+                            Label("把本次保存为模板", systemImage: "bookmark")
+                        }
+                        .accessibilityIdentifier("save-workout-template")
+                    } footer: {
+                        Text("例如“胸”“背”或“腿”；同名模板会更新为这次的动作和组数。")
+                    }
+                }
                 if (workout?.sets.isEmpty ?? true), let prev = previousStrength {
                     Section {
                         Button {
@@ -249,7 +302,7 @@ struct StrengthLogSheet: View {
                                             .multilineTextAlignment(.trailing)
                                             .frame(maxWidth: .infinity)
                                             .accessibilityIdentifier("saved-set-weight")
-                                        Text(WeightPreference.current.label)
+                                        Text(weightUnit.label)
                                             .foregroundStyle(.secondary)
                                         Text("×")
                                             .foregroundStyle(.secondary)
@@ -265,6 +318,7 @@ struct StrengthLogSheet: View {
                                             Image(systemName: "trash")
                                         }
                                         .buttonStyle(.borderless)
+                                        .accessibilityIdentifier("delete-saved-set")
                                     }
                                     .monospacedDigit()
                                 }
@@ -291,7 +345,7 @@ struct StrengthLogSheet: View {
                         TextField("重量", text: $weightText)
                             .keyboardType(.decimalPad)
                             .accessibilityIdentifier("new-set-weight")
-                        Text(WeightPreference.current.label).foregroundStyle(.secondary)
+                        Text(weightUnit.label).foregroundStyle(.secondary)
                         TextField("次数", text: $repsText)
                             .keyboardType(.numberPad)
                             .accessibilityIdentifier("new-set-reps")
@@ -308,6 +362,15 @@ struct StrengthLogSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }
                 }
+            }
+            .alert("保存训练模板", isPresented: $showingTemplateName) {
+                TextField("名称，如 胸、背、腿", text: $templateName)
+                    .accessibilityIdentifier("workout-template-name")
+                Button("取消", role: .cancel) {}
+                Button("保存") { saveTemplate() }
+                    .disabled(templateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            } message: {
+                Text("以后开始力量训练时，可以一键载入这些动作、组数和重量。")
             }
         }
     }
@@ -337,10 +400,10 @@ struct StrengthLogSheet: View {
 
     private func weightBinding(for set: ExerciseSet) -> Binding<String> {
         Binding(
-            get: { WeightConvert.formatted(set.weightKg, in: WeightPreference.current) },
+            get: { WeightConvert.formatted(set.weightKg, in: weightUnit) },
             set: { value in
                 guard let input = Double(value), input >= 0 else { return }
-                set.weightKg = WeightConvert.toKg(input, from: WeightPreference.current)
+                set.weightKg = WeightConvert.toKg(input, from: weightUnit)
                 try? context.save()
             }
         )
@@ -395,6 +458,46 @@ struct StrengthLogSheet: View {
         try? context.save()
     }
 
+    private func apply(_ template: WorkoutTemplate) {
+        WorkoutDayService.enforceSingleWorkout(kind: .strength, on: date, in: context)
+        let entry = workout ?? WorkoutEntry.strength(date: date)
+        if workout == nil { context.insert(entry) }
+        for (order, savedSet) in template.sets.enumerated() {
+            let set = ExerciseSet(
+                exerciseName: savedSet.exerciseName,
+                weightKg: savedSet.weightKg,
+                reps: savedSet.reps,
+                order: order
+            )
+            set.workout = entry
+            entry.sets.append(set)
+            context.insert(set)
+        }
+        try? context.save()
+    }
+
+    private func saveTemplate() {
+        guard let workout else { return }
+        let savedSets = workout.sets.sorted(by: { $0.order < $1.order }).map {
+            WorkoutTemplateSet(exerciseName: $0.exerciseName, weightKg: $0.weightKg, reps: $0.reps)
+        }
+        templates = WorkoutTemplateStore.save(name: templateName, sets: savedSets)
+    }
+
+    private func deleteTemplates(at offsets: IndexSet) {
+        for index in offsets.sorted(by: >) {
+            templates = WorkoutTemplateStore.delete(templates[index])
+        }
+    }
+
+    private func changeWeightUnit(from oldUnit: WeightUnit, to newUnit: WeightUnit) {
+        if let input = Double(weightText), input >= 0 {
+            let kg = WeightConvert.toKg(input, from: oldUnit)
+            weightText = WeightConvert.formatted(kg, in: newUnit)
+        }
+        WeightPreference.current = newUnit
+    }
+
     private func addSet() {
         WorkoutDayService.enforceSingleWorkout(kind: .strength, on: date, in: context)
         let entry: WorkoutEntry
@@ -406,7 +509,7 @@ struct StrengthLogSheet: View {
         }
         let order = entry.sets.count
         let input = Double(weightText) ?? 0
-        let kg = WeightConvert.toKg(input, from: WeightPreference.current)
+        let kg = WeightConvert.toKg(input, from: weightUnit)
         let set = ExerciseSet(
             exerciseName: exerciseName.trimmingCharacters(in: .whitespaces),
             weightKg: kg,

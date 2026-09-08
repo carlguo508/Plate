@@ -3,6 +3,7 @@ import SwiftData
 import PhotosUI
 
 enum MealItemSource {
+    case manual(name: String, calories: Double, protein: Double)
     case recipe(Recipe, servings: Double)
     case recipeSnapshot(Recipe, servings: Double, source: MealItem)
     case ingredientGrams(Ingredient, grams: Double)
@@ -47,6 +48,18 @@ enum MealItemSource {
 
     func makeMealItem() -> MealItem {
         switch self {
+        case .manual(let name, let calories, let protein):
+            MealItem(
+                estimatedName: name,
+                description: "",
+                calories: calories,
+                protein: protein,
+                carbs: 0,
+                fat: 0,
+                confidence: "手动记录",
+                advice: "",
+                portionNotes: ""
+            )
         case .recipe(let recipe, let servings):
             MealItem(recipe: recipe, servings: servings)
         case .recipeSnapshot(let recipe, let servings, let source):
@@ -86,7 +99,7 @@ enum MealItemSource {
 struct MealItemPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \MealEntry.date, order: .reverse) private var mealHistory: [MealEntry]
-    @State private var tab: Tab = .frequent
+    @State private var tab: Tab = .quick
 
     let bodyWeightKg: Double?
     let currentDailyCalories: Double
@@ -109,7 +122,7 @@ struct MealItemPickerView: View {
     }
 
     enum Tab: String, CaseIterable, Identifiable {
-        case frequent = "常用"
+        case quick = "快速"
         case recipes = "菜谱"
         case ingredients = "食材"
         case estimate = "AI 估算"
@@ -130,11 +143,9 @@ struct MealItemPickerView: View {
                 .padding()
 
                 switch tab {
-                case .frequent:
-                    FrequentMealList(options: frequentOptions) { item in
-                        guard let source = MealItemSource(reusing: item) else { return }
-                        onPick(source)
-                        dismiss()
+                case .quick:
+                    QuickMealForm(options: frequentOptions) { source in
+                        onPick(source); dismiss()
                     }
                 case .recipes:
                     RecipePickList(onPick: { source in
@@ -161,6 +172,105 @@ struct MealItemPickerView: View {
                     Button("取消") { dismiss() }
                 }
             }
+        }
+    }
+}
+
+private struct QuickMealForm: View {
+    let options: [FrequentMealOption]
+    let onPick: (MealItemSource) -> Void
+
+    @State private var name = ""
+    @State private var caloriesText = ""
+    @State private var proteinText = ""
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSave: Bool {
+        !trimmedName.isEmpty && (Double(caloriesText) ?? -1) >= 0
+    }
+
+    var body: some View {
+        Form {
+            if !options.isEmpty {
+                Section("常用") {
+                    ForEach(options) { option in
+                        Button {
+                            guard let source = MealItemSource(reusing: option.item) else { return }
+                            onPick(source)
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(option.name)
+                                        .foregroundStyle(.primary)
+                                    Text("\(NutritionFormat.kcal(option.item.calories)) kcal · 蛋白 \(NutritionFormat.grams(option.item.protein))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "plus.circle.fill")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section {
+                TextField("名称，如 Chipotle 鸡肉碗", text: $name)
+                    .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("quick-meal-name")
+                nutritionField(
+                    "热量",
+                    text: $caloriesText,
+                    unit: "kcal",
+                    identifier: "quick-meal-calories"
+                )
+                nutritionField(
+                    "蛋白质（可选）",
+                    text: $proteinText,
+                    unit: "g",
+                    identifier: "quick-meal-protein"
+                )
+            } header: {
+                Text("直接记录")
+            } footer: {
+                Text("不用拆分食材。记录后，这项会自动出现在“常用”里供下次一键加入。")
+            }
+
+            Section {
+                Button("加入这餐") {
+                    onPick(.manual(
+                        name: trimmedName,
+                        calories: Double(caloriesText) ?? 0,
+                        protein: Double(proteinText) ?? 0
+                    ))
+                }
+                .frame(maxWidth: .infinity)
+                .disabled(!canSave)
+                .accessibilityIdentifier("save-quick-meal")
+            }
+        }
+    }
+
+    private func nutritionField(
+        _ label: String,
+        text: Binding<String>,
+        unit: String,
+        identifier: String
+    ) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            TextField("0", text: text)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 90)
+                .accessibilityIdentifier(identifier)
+            Text(unit)
+                .foregroundStyle(.secondary)
+                .frame(width: 34, alignment: .leading)
         }
     }
 }
@@ -242,59 +352,6 @@ enum FrequentMealService {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
             .replacingOccurrences(of: " ", with: "")
-    }
-}
-
-private struct FrequentMealList: View {
-    let options: [FrequentMealOption]
-    let onPick: (MealItem) -> Void
-
-    var body: some View {
-        if options.isEmpty {
-            ContentUnavailableView(
-                "还没有常用食物",
-                systemImage: "clock.arrow.circlepath",
-                description: Text("记录几次后，早餐和常吃的食物会自动出现在这里。")
-            )
-        } else {
-            List(options) { option in
-                Button {
-                    onPick(option.item)
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: option.isPreferredMealType ? "star.fill" : "clock")
-                            .foregroundStyle(option.isPreferredMealType ? .orange : .secondary)
-                            .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(option.name)
-                                .foregroundStyle(.primary)
-                            HStack(spacing: 8) {
-                                Text("\(NutritionFormat.kcal(option.item.calories)) kcal")
-                                Text("蛋白 \(NutritionFormat.grams(option.item.protein))")
-                                if option.usageCount > 1 {
-                                    Text("记录过 \(option.usageCount) 次")
-                                }
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundStyle(Color.accentColor)
-                    }
-                    .padding(.vertical, 3)
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                Text("点击即按最近一次记录加入；份量不同可使用拍照或文字重新估算。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
-                    .background(.bar)
-            }
-        }
     }
 }
 
