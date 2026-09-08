@@ -70,6 +70,26 @@ struct ModelTests {
         #expect(abs(recipe.perServingCalories - 90) < 0.01)
     }
 
+    @Test func quickRecipeUsesManualPerServingNutrition() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let recipe = Recipe(
+            name: "工作日早餐",
+            manualCaloriesPerServing: 520,
+            manualProteinPerServing: 38
+        )
+        ctx.insert(recipe)
+        try ctx.save()
+
+        let meal = MealEntry(mealType: .breakfast)
+        meal.items.append(MealItem(recipe: recipe, servings: 1.5))
+
+        #expect(recipe.perServingCalories == 520)
+        #expect(recipe.perServingProtein == 38)
+        #expect(meal.totalCalories == 780)
+        #expect(meal.totalProtein == 57)
+    }
+
     // MARK: - MealEntry referencing recipe and loose ingredient
 
     @Test func mealEntryAggregatesRecipeAndLooseItems() throws {
@@ -185,7 +205,7 @@ struct ModelTests {
         #expect(fetched.first?.cardioIntensity == .high)
     }
 
-    @Test func workoutDayKeepsOnlyOneKind() throws {
+    @Test func workoutDayKeepsOneEntryPerKind() throws {
         let container = try makeContainer()
         let ctx = container.mainContext
         let date = Date()
@@ -202,8 +222,9 @@ struct ModelTests {
         try ctx.save()
 
         let workouts = try ctx.fetch(FetchDescriptor<WorkoutEntry>())
-        #expect(workouts.count == 1)
-        #expect(workouts.first?.kind == .cardio)
+        #expect(workouts.count == 2)
+        #expect(workouts.contains { $0.kind == .strength })
+        #expect(workouts.contains { $0.kind == .cardio })
     }
 
     @Test func cardioEnergyEstimateUsesDurationAndBodyWeight() {

@@ -4,6 +4,7 @@ import PhotosUI
 
 enum MealItemSource {
     case recipe(Recipe, servings: Double)
+    case recipeSnapshot(Recipe, servings: Double, source: MealItem)
     case ingredientGrams(Ingredient, grams: Double)
     case ingredientCount(Ingredient, count: Int)
     case estimated(
@@ -21,7 +22,7 @@ enum MealItemSource {
 
     init?(reusing item: MealItem) {
         if let recipe = item.recipe, let servings = item.servings {
-            self = .recipe(recipe, servings: servings)
+            self = .recipeSnapshot(recipe, servings: servings, source: item)
         } else if let ingredient = item.ingredient, let grams = item.grams {
             self = .ingredientGrams(ingredient, grams: grams)
         } else if let ingredient = item.ingredient, let count = item.count {
@@ -48,6 +49,8 @@ enum MealItemSource {
         switch self {
         case .recipe(let recipe, let servings):
             MealItem(recipe: recipe, servings: servings)
+        case .recipeSnapshot(let recipe, let servings, let source):
+            MealItem(recipe: recipe, servings: servings, preservingNutritionFrom: source)
         case .ingredientGrams(let ingredient, let grams):
             MealItem(ingredient: ingredient, grams: grams)
         case .ingredientCount(let ingredient, let count):
@@ -109,7 +112,7 @@ struct MealItemPickerView: View {
         case frequent = "常用"
         case recipes = "菜谱"
         case ingredients = "食材"
-        case estimate = "AI 记录"
+        case estimate = "AI 估算"
         var id: String { rawValue }
     }
 
@@ -169,7 +172,7 @@ struct FrequentMealOption: Identifiable {
     let isPreferredMealType: Bool
 
     var name: String {
-        item.recipe?.name ?? item.ingredient?.name ?? item.estimatedName ?? "未命名"
+        item.historicalName ?? "未命名"
     }
 }
 
@@ -189,7 +192,7 @@ enum FrequentMealService {
         var grouped: [String: Accumulator] = [:]
         for meal in meals {
             for item in meal.items {
-                let name = item.recipe?.name ?? item.ingredient?.name ?? item.estimatedName ?? ""
+                let name = item.historicalName ?? ""
                 let key = normalizedName(name)
                 guard !key.isEmpty, MealItemSource(reusing: item) != nil else { continue }
 
@@ -379,18 +382,13 @@ private struct EstimatedMealForm: View {
             Section("大致营养") {
                 nutritionField("热量", text: $caloriesText, unit: "kcal")
                 nutritionField("蛋白质", text: $proteinText, unit: "g")
-                nutritionField("碳水", text: $carbsText, unit: "g")
-                nutritionField("脂肪", text: $fatText, unit: "g")
                 if !confidence.isEmpty {
-                    LabeledContent("可信度", value: confidence)
-                }
-                if !portionNotes.isEmpty {
-                    Text(portionNotes)
+                    Label(confidence, systemImage: "wand.and.stars")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                if !advice.isEmpty {
-                    Text(advice)
+                if !portionNotes.isEmpty {
+                    Text(portionNotes)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

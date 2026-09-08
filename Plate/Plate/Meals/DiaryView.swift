@@ -6,6 +6,7 @@ struct DiaryView: View {
     @Query(sort: \MealEntry.date, order: .reverse) private var allMeals: [MealEntry]
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: .now)
     @State private var pickerTarget: MealType?
+    @State private var showingRecipes = false
 
     private var todaysMeals: [MealEntry] {
         let cal = Calendar.current
@@ -51,10 +52,25 @@ struct DiaryView: View {
             }
             .listSectionSpacing(.compact)
             .navigationTitle("饮食")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingRecipes = true
+                    } label: {
+                        Label("常用餐", systemImage: "bookmark")
+                    }
+                }
+            }
             .sheet(item: $pickerTarget) { type in
-                MealItemPickerView(preferredMealType: type) { source in
+                MealItemPickerView(
+                    currentDailyCalories: dailyTotals.kcal,
+                    preferredMealType: type
+                ) { source in
                     addItem(source, mealType: type)
                 }
+            }
+            .sheet(isPresented: $showingRecipes) {
+                RecipeListView()
             }
         }
     }
@@ -93,10 +109,6 @@ struct DiaryView: View {
             totalCell("热量", NutritionFormat.kcal(dailyTotals.kcal), "kcal")
             Divider()
             totalCell("蛋白", String(format: "%.0f", dailyTotals.p), "g")
-            Divider()
-            totalCell("碳水", String(format: "%.0f", dailyTotals.c), "g")
-            Divider()
-            totalCell("脂肪", String(format: "%.0f", dailyTotals.f), "g")
         }
         .frame(height: 56)
         .padding(.vertical, 8)
@@ -208,7 +220,7 @@ private struct MealItemRow: View {
     let item: MealItem
 
     private var name: String {
-        item.recipe?.name ?? item.ingredient?.name ?? item.estimatedName ?? "—"
+        item.historicalName ?? "—"
     }
 
     private var quantityText: String {

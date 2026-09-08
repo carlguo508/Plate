@@ -28,6 +28,7 @@ struct ReviewView: View {
                 date: date,
                 kcal: dayMeals.reduce(0) { $0 + $1.totalCalories },
                 protein: dayMeals.reduce(0) { $0 + $1.totalProtein },
+                hasNutrition: !dayMeals.isEmpty,
                 hadStrength: dayWorkouts.contains { $0.kind == .strength },
                 hadCardio: dayWorkouts.contains { $0.kind == .cardio }
             )
@@ -57,41 +58,38 @@ struct ReviewView: View {
                 Section { summaryCard }
                     .listRowBackground(Color.clear)
             }
-            .navigationTitle("回顾")
+            .navigationTitle("趋势")
         }
     }
 
     // MARK: - Charts
 
     private var kcalChart: some View {
-        Chart(dayBuckets) { bucket in
-            BarMark(
-                x: .value("日期", bucket.date, unit: .day),
-                y: .value("热量", bucket.kcal)
-            )
-            .foregroundStyle(.orange)
+        Chart {
+            ForEach(recordedNutritionDays) { bucket in
+                BarMark(
+                    x: .value("日期", bucket.date, unit: .day),
+                    y: .value("热量", bucket.kcal)
+                )
+                .foregroundStyle(.orange)
+            }
+            RuleMark(y: .value("目标", Goals.dailyKcal))
+                .foregroundStyle(.gray)
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                .annotation(position: .top, alignment: .trailing) {
+                    Text("目标 \(NutritionFormat.kcal(Goals.dailyKcal))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
         }
-        .chartForegroundStyleScale(["热量": Color.orange, "目标": Color.gray])
         .chartYAxis {
             AxisMarks(position: .leading)
-        }
-        .chartOverlay { proxy in
-            GeometryReader { geo in
-                if let yRange = proxy.plotFrame.map({ geo[$0] }) {
-                    let y = (1 - Goals.dailyKcal / max(maxKcal, Goals.dailyKcal)) * yRange.height + yRange.minY
-                    Path { p in
-                        p.move(to: CGPoint(x: yRange.minX, y: y))
-                        p.addLine(to: CGPoint(x: yRange.maxX, y: y))
-                    }
-                    .stroke(Color.gray, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                }
-            }
         }
         .frame(height: 180)
     }
 
     private var proteinChart: some View {
-        Chart(dayBuckets) { bucket in
+        Chart(recordedNutritionDays) { bucket in
             LineMark(
                 x: .value("日期", bucket.date, unit: .day),
                 y: .value("蛋白", bucket.protein)
@@ -208,6 +206,7 @@ struct ReviewView: View {
         VStack(alignment: .leading, spacing: 6) {
             stat("日均热量", String(Int(avgKcal.rounded())) + " kcal")
             stat("日均蛋白", String(Int(avgProtein.rounded())) + " g")
+            stat("饮食记录", "\(recordedNutritionDays.count) / \(range.days) 天")
             stat("训练天数", "\(trainingDayCount) / \(range.days)")
         }
         .padding(.vertical, 4)
@@ -223,13 +222,12 @@ struct ReviewView: View {
 
     // MARK: - Aggregates
 
-    private var maxKcal: Double { dayBuckets.map(\.kcal).max() ?? 0 }
-    private var nonEmptyDays: [DayBucket] { dayBuckets.filter { $0.kcal > 0 } }
+    private var recordedNutritionDays: [DayBucket] { dayBuckets.filter(\.hasNutrition) }
     private var avgKcal: Double {
-        nonEmptyDays.isEmpty ? 0 : nonEmptyDays.reduce(0) { $0 + $1.kcal } / Double(nonEmptyDays.count)
+        recordedNutritionDays.isEmpty ? 0 : recordedNutritionDays.reduce(0) { $0 + $1.kcal } / Double(recordedNutritionDays.count)
     }
     private var avgProtein: Double {
-        nonEmptyDays.isEmpty ? 0 : nonEmptyDays.reduce(0) { $0 + $1.protein } / Double(nonEmptyDays.count)
+        recordedNutritionDays.isEmpty ? 0 : recordedNutritionDays.reduce(0) { $0 + $1.protein } / Double(recordedNutritionDays.count)
     }
     private var trainingDayCount: Int {
         dayBuckets.filter { $0.hadStrength || $0.hadCardio }.count
@@ -240,7 +238,7 @@ struct ReviewView: View {
     /// One point per day with a reading, within the selected range, plus a 7-day moving average.
     private var weightPoints: [WeightPoint] {
         let cal = Calendar.current
-        let cutoff = cal.date(byAdding: .day, value: -range.days, to: cal.startOfDay(for: .now)) ?? .distantPast
+        let cutoff = ReviewWindow.startDate(days: range.days, today: .now, calendar: cal)
         let inRange = weights
             .filter { $0.date >= cutoff }
             .sorted { $0.date < $1.date }
@@ -264,7 +262,7 @@ struct ReviewView: View {
     private func topSetProgress(for exercise: String?) -> [WeightPoint] {
         guard let exercise else { return [] }
         let cal = Calendar.current
-        let cutoff = cal.date(byAdding: .day, value: -range.days, to: cal.startOfDay(for: .now)) ?? .distantPast
+        let cutoff = ReviewWindow.startDate(days: range.days, today: .now, calendar: cal)
         var maxByDay: [Date: Double] = [:]
         for workout in workouts where workout.kind == .strength && workout.date >= cutoff {
             let day = cal.startOfDay(for: workout.date)
@@ -289,6 +287,7 @@ private struct DayBucket: Identifiable {
     let date: Date
     let kcal: Double
     let protein: Double
+    let hasNutrition: Bool
     let hadStrength: Bool
     let hadCardio: Bool
     var id: Date { date }

@@ -15,6 +15,15 @@ struct RecipeEditView: View {
     @State private var newTag: String = ""
     @State private var draftIngredients: [DraftIngredient] = []
     @State private var showingPicker = false
+    @State private var mode: Mode = .quick
+    @State private var caloriesText: String = ""
+    @State private var proteinText: String = ""
+
+    private enum Mode: String, CaseIterable, Identifiable {
+        case quick = "快捷"
+        case detailed = "按食材"
+        var id: String { rawValue }
+    }
 
     /// In-memory edit buffer. We commit to SwiftData only on save.
     struct DraftIngredient: Identifiable {
@@ -27,62 +36,86 @@ struct RecipeEditView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Picker("记录方式", selection: $mode) {
+                        ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                } footer: {
+                    Text(mode == .quick ? "直接保存每份热量和蛋白质，适合常吃的餐。" : "按食材计算营养，适合需要保留做法的菜谱。")
+                }
+
                 Section("基本信息") {
                     TextField("菜名", text: $name)
-                    Stepper("一锅 \(servings) 份", value: $servings, in: 1...20)
+                    if mode == .quick {
+                        HStack {
+                            TextField("每份热量", text: $caloriesText)
+                                .keyboardType(.decimalPad)
+                            Text("kcal").foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            TextField("每份蛋白质", text: $proteinText)
+                                .keyboardType(.decimalPad)
+                            Text("g").foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Stepper("一锅 \(servings) 份", value: $servings, in: 1...20)
+                    }
                 }
 
-                Section {
-                    ForEach($draftIngredients) { $item in
-                        ingredientRow(item: item)
+                if mode == .detailed {
+                    Section {
+                        ForEach($draftIngredients) { $item in
+                            ingredientRow(item: item)
+                        }
+                        .onDelete { offsets in
+                            draftIngredients.remove(atOffsets: offsets)
+                        }
+                        Button {
+                            showingPicker = true
+                        } label: {
+                            Label("添加食材", systemImage: "plus.circle")
+                        }
+                    } header: {
+                        Text("食材")
                     }
-                    .onDelete { offsets in
-                        draftIngredients.remove(atOffsets: offsets)
-                    }
-                    Button {
-                        showingPicker = true
-                    } label: {
-                        Label("添加食材", systemImage: "plus.circle")
-                    }
-                } header: {
-                    Text("食材")
-                }
 
-                Section("做法") {
-                    TextField("步骤说明…", text: $steps, axis: .vertical)
-                        .lineLimit(4...20)
-                }
+                    Section("做法") {
+                        TextField("步骤说明…", text: $steps, axis: .vertical)
+                            .lineLimit(4...20)
+                    }
 
-                Section {
-                    if !tags.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(tags, id: \.self) { tag in
-                                    HStack(spacing: 4) {
-                                        Text(tag).font(.caption)
-                                        Button {
-                                            tags.removeAll { $0 == tag }
-                                        } label: {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .font(.caption)
+                    Section {
+                        if !tags.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    ForEach(tags, id: \.self) { tag in
+                                        HStack(spacing: 4) {
+                                            Text(tag).font(.caption)
+                                            Button {
+                                                tags.removeAll { $0 == tag }
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.caption)
+                                            }
                                         }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.accentColor.opacity(0.15))
+                                        .clipShape(Capsule())
                                     }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.accentColor.opacity(0.15))
-                                    .clipShape(Capsule())
                                 }
                             }
                         }
+                        HStack {
+                            TextField("新增标签（如 减脂、家常）", text: $newTag)
+                                .onSubmit(addTag)
+                            Button("添加", action: addTag)
+                                .disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                    } header: {
+                        Text("标签")
                     }
-                    HStack {
-                        TextField("新增标签（如 减脂、家常）", text: $newTag)
-                            .onSubmit(addTag)
-                        Button("添加", action: addTag)
-                            .disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                } header: {
-                    Text("标签")
                 }
             }
             .navigationTitle(existing == nil ? "新菜谱" : "编辑菜谱")
@@ -93,7 +126,7 @@ struct RecipeEditView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存", action: save)
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(!canSave)
                 }
             }
             .sheet(isPresented: $showingPicker) {
@@ -127,12 +160,28 @@ struct RecipeEditView: View {
         newTag = ""
     }
 
+    private var canSave: Bool {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        if mode == .quick {
+            return (Double(caloriesText) ?? -1) >= 0 && (Double(proteinText) ?? -1) >= 0
+        }
+        return !draftIngredients.isEmpty
+    }
+
     private func loadExisting() {
         guard let existing, draftIngredients.isEmpty, name.isEmpty else { return }
         name = existing.name
         servings = existing.servings
         steps = existing.steps
         tags = existing.tags
+        if let calories = existing.manualCaloriesPerServing,
+           let protein = existing.manualProteinPerServing {
+            mode = .quick
+            caloriesText = NutritionFormat.editableNumber(calories)
+            proteinText = NutritionFormat.editableNumber(protein)
+        } else {
+            mode = .detailed
+        }
         draftIngredients = existing.ingredients.compactMap { item in
             guard let ing = item.ingredient else { return nil }
             return DraftIngredient(ingredient: ing, grams: item.grams, count: item.count)
@@ -144,21 +193,34 @@ struct RecipeEditView: View {
         if let existing {
             recipe = existing
             recipe.name = name
-            recipe.servings = servings
-            recipe.steps = steps
-            recipe.tags = tags
             recipe.updatedAt = .now
-            // Replace ingredients
-            for item in recipe.ingredients {
-                context.delete(item)
+            if mode == .quick {
+                recipe.manualCaloriesPerServing = Double(caloriesText) ?? 0
+                recipe.manualProteinPerServing = Double(proteinText) ?? 0
+            } else {
+                recipe.manualCaloriesPerServing = nil
+                recipe.manualProteinPerServing = nil
+                recipe.servings = servings
+                recipe.steps = steps
+                recipe.tags = tags
+                for item in recipe.ingredients {
+                    context.delete(item)
+                }
+                recipe.ingredients = []
             }
-            recipe.ingredients = []
         } else {
-            recipe = Recipe(name: name, steps: steps, servings: servings, tags: tags)
+            recipe = Recipe(
+                name: name,
+                steps: mode == .detailed ? steps : "",
+                servings: mode == .detailed ? servings : 1,
+                tags: mode == .detailed ? tags : [],
+                manualCaloriesPerServing: mode == .quick ? Double(caloriesText) : nil,
+                manualProteinPerServing: mode == .quick ? Double(proteinText) : nil
+            )
             context.insert(recipe)
         }
 
-        for draft in draftIngredients {
+        for draft in mode == .detailed ? draftIngredients : [] {
             let item: RecipeIngredient
             if let g = draft.grams {
                 item = RecipeIngredient(ingredient: draft.ingredient, grams: g)

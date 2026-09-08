@@ -11,6 +11,7 @@ struct TodayView: View {
     @State private var showingWeight = false
     @State private var showingMealPicker = false
     @State private var showingMealTypeChoice = false
+    @State private var showingStrengthLog = false
     @State private var pendingMealType: MealType = .lunch
     @State private var goalsTick = 0  // forces re-render after goals update
     @State private var latestPriorWeight: BodyWeightEntry?
@@ -38,27 +39,12 @@ struct TodayView: View {
     private var totalKcal: Double { todaysMeals.reduce(0) { $0 + $1.totalCalories } }
     private var totalProtein: Double { todaysMeals.reduce(0) { $0 + $1.totalProtein } }
     private var currentWeightKg: Double? { todaysWeight?.weightKg ?? latestPriorWeight?.weightKg }
-    private var energyBalance: DailyEnergyBalance {
-        EnergyBalanceService.calculate(
-            meals: todaysMeals,
-            workouts: todaysWorkouts,
-            bodyWeightKg: currentWeightKg
-        )
-    }
 
     private var copyableYesterdayMeals: [MealEntry] {
         let recordedTypes = Set(todaysMeals.map(\.mealType))
         return yesterdaysMeals.filter {
             !recordedTypes.contains($0.mealType) && !$0.items.isEmpty
         }
-    }
-
-    private var todaysDayPlan: DayPlan? {
-        let plan = WeekPlanService.planForWeek(of: .now, in: context)
-        let weekday = Calendar.current.component(.weekday, from: .now)
-        // Calendar weekday: 1=Sun, 2=Mon, ... 7=Sat → app dayIndex: 0=Mon..6=Sun
-        let dayIndex = (weekday + 5) % 7
-        return plan.days.first { $0.dayIndex == dayIndex }
     }
 
     var body: some View {
@@ -68,15 +54,13 @@ struct TodayView: View {
                     .listRowBackground(Color.clear)
 
                 Section("体重") { weightCard }
-                Section("今日训练") { trainingCard }
-                Section("今日热量") { energyBalanceCard }
-                Section("今日饮食") {
+                Section("饮食") {
                     nutritionCard
                     Button {
                         showingMealTypeChoice = true
                     } label: {
-                        Label("加食物", systemImage: "plus.circle")
-                            .font(.callout)
+                        Label("记一餐", systemImage: "plus.circle.fill")
+                            .fontWeight(.semibold)
                     }
                     if !copyableYesterdayMeals.isEmpty {
                         Button {
@@ -94,6 +78,7 @@ struct TodayView: View {
                 if !todaysMeals.isEmpty {
                     Section("今天吃的") { mealList }
                 }
+                Section("训练") { trainingCard }
             }
             .navigationTitle("今天")
             .toolbar {
@@ -121,11 +106,13 @@ struct TodayView: View {
                 MealItemPickerView(
                     bodyWeightKg: currentWeightKg,
                     currentDailyCalories: totalKcal,
-                    estimatedDailyBurn: energyBalance.totalBurnCalories,
                     preferredMealType: pendingMealType
                 ) { source in
                     addItem(source, mealType: pendingMealType)
                 }
+            }
+            .sheet(isPresented: $showingStrengthLog) {
+                StrengthLogSheet(date: Calendar.current.startOfDay(for: .now))
             }
             .task {
                 loadLatestPriorWeight()
@@ -215,60 +202,40 @@ struct TodayView: View {
             .font(.headline)
     }
 
-    @ViewBuilder
     private var trainingCard: some View {
-        if let day = todaysDayPlan {
-            NavigationLink {
-                DayDetailView(day: day, planDate: Calendar.current.startOfDay(for: .now))
-            } label: {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Image(systemName: "dumbbell")
-                        Text("计划：\(DefaultTemplate.displayLabel(DefaultTemplate.raw(from: day.strengthType)))")
-                            .fontWeight(.semibold)
-                        Spacer()
-                        if !todaysWorkouts.isEmpty {
-                            Label("已完成", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .font(.caption)
-                        }
-                    }
-                    if let cardio = day.plannedCardio, !cardio.isEmpty {
-                        Label(cardio, systemImage: "figure.run")
-                            .font(.caption)
-                            .foregroundStyle(.blue)
-                    }
+        Button {
+            showingStrengthLog = true
+        } label: {
+            HStack {
+                Image(systemName: "dumbbell.fill")
+                    .foregroundStyle(.purple)
+                VStack(alignment: .leading, spacing: 3) {
                     if let strength = todaysWorkouts.first(where: { $0.kind == .strength }), !strength.sets.isEmpty {
-                        Text("\(strength.sets.count) 组 / \(distinctExercises(strength)) 个动作")
+                        Text("继续今天的训练")
+                            .fontWeight(.semibold)
+                        Text("\(strength.sets.count) 组 · \(distinctExercises(strength)) 个动作")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                    }
-                    ForEach(todaysWorkouts.filter { $0.kind == .cardio }) { cardio in
-                        Text("\(cardio.cardioActivity ?? "") · \(cardio.cardioDurationMinutes ?? 0) 分钟 · \(intensityLabel(cardio.cardioIntensity))")
+                    } else {
+                        Text("开始今天的训练")
+                            .fontWeight(.semibold)
+                        Text("可以直接复制上次记录")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
-                .padding(.vertical, 4)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
-            .buttonStyle(.plain)
-        } else {
-            Text("还没生成本周计划")
-                .foregroundStyle(.secondary)
         }
+        .buttonStyle(.plain)
+        .padding(.vertical, 4)
     }
 
     private func distinctExercises(_ workout: WorkoutEntry) -> Int {
         Set(workout.sets.map(\.exerciseName)).count
-    }
-
-    private func intensityLabel(_ intensity: CardioIntensity?) -> String {
-        switch intensity {
-        case .high: "高强度"
-        case .medium: "中等强度"
-        case .low: "低强度"
-        case .none: "—"
-        }
     }
 
     private var nutritionCard: some View {
@@ -289,50 +256,6 @@ struct TodayView: View {
             )
         }
         .padding(.vertical, 4)
-    }
-
-    private var energyBalanceCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                energyValue("已摄入", value: energyBalance.intakeCalories, tint: .orange)
-                Divider()
-                energyValue("估算消耗", value: energyBalance.totalBurnCalories, tint: .blue)
-                Divider()
-                energyValue(
-                    energyBalance.calorieGap >= 0 ? "估算缺口" : "估算超出",
-                    value: abs(energyBalance.calorieGap),
-                    tint: energyBalance.calorieGap >= 0 ? .green : .red
-                )
-            }
-            if energyBalance.exerciseCalories > 0 {
-                Text("训练约 \(NutritionFormat.kcal(energyBalance.exerciseCalories)) kcal，已计入消耗")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Text(energyBalance.advice)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Text("消耗为全天粗估，重点看 7 天体重和摄入趋势。")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.vertical, 4)
-    }
-
-    private func energyValue(_ label: String, value: Double, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text("\(NutritionFormat.kcal(value))")
-                .font(.headline)
-                .monospacedDigit()
-                .foregroundStyle(tint)
-            Text("kcal")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var mealList: some View {
@@ -356,7 +279,7 @@ struct TodayView: View {
     }
 
     private func itemName(_ item: MealItem) -> String {
-        item.recipe?.name ?? item.ingredient?.name ?? item.estimatedName ?? "—"
+        item.historicalName ?? "—"
     }
 
     private func mealOrder(_ type: MealType) -> Int {
@@ -409,7 +332,6 @@ private struct GoalsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var kcalText: String = String(Int(Goals.dailyKcal))
     @State private var proteinText: String = String(Int(Goals.dailyProtein))
-    @State private var baselineBurnText: String = String(Int(Goals.baselineDailyBurn))
     @State private var aiEndpoint = Goals.aiEndpoint
     @State private var aiAccessToken = Goals.aiAccessToken
 
@@ -440,15 +362,6 @@ private struct GoalsSheet: View {
                             .frame(width: 80)
                         Text("g").foregroundStyle(.secondary)
                     }
-                    HStack {
-                        Text("基础日消耗")
-                        Spacer()
-                        TextField("kcal", text: $baselineBurnText)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 80)
-                        Text("kcal").foregroundStyle(.secondary)
-                    }
                 }
                 Section {
                     TextField("https://.../api/analyze-meal", text: $aiEndpoint)
@@ -472,7 +385,6 @@ private struct GoalsSheet: View {
                     Button("保存") {
                         if let k = Double(kcalText), k > 0 { Goals.dailyKcal = k }
                         if let p = Double(proteinText), p > 0 { Goals.dailyProtein = p }
-                        if let b = Double(baselineBurnText), b > 0 { Goals.baselineDailyBurn = b }
                         Goals.aiEndpoint = aiEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
                         Goals.aiAccessToken = aiAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
                         dismiss()
