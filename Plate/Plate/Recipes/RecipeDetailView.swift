@@ -76,7 +76,8 @@ struct RecipeDetailView: View {
     }
 
     private var nutritionCard: some View {
-        VStack(spacing: 12) {
+        let showPerServing = recipe.manualCaloriesPerServing != nil || perServing
+        return VStack(spacing: 12) {
             if recipe.manualCaloriesPerServing == nil {
                 Picker("", selection: $perServing) {
                     Text("每份").tag(true)
@@ -88,26 +89,26 @@ struct RecipeDetailView: View {
             HStack(spacing: 0) {
                 nutrientCell(
                     "热量",
-                    NutritionFormat.kcal(perServing ? recipe.perServingCalories : recipe.totalCalories),
+                    NutritionFormat.kcal(showPerServing ? recipe.perServingCalories : recipe.totalCalories),
                     "kcal"
                 )
                 Divider()
                 nutrientCell(
                     "蛋白",
-                    String(format: "%.1f", perServing ? recipe.perServingProtein : recipe.totalProtein),
+                    String(format: "%.1f", showPerServing ? recipe.perServingProtein : recipe.totalProtein),
                     "g"
                 )
                 if recipe.manualCaloriesPerServing == nil {
                     Divider()
                     nutrientCell(
                         "碳水",
-                        String(format: "%.1f", perServing ? recipe.perServingCarbs : recipe.totalCarbs),
+                        String(format: "%.1f", showPerServing ? recipe.perServingCarbs : recipe.totalCarbs),
                         "g"
                     )
                     Divider()
                     nutrientCell(
                         "脂肪",
-                        String(format: "%.1f", perServing ? recipe.perServingFat : recipe.totalFat),
+                        String(format: "%.1f", showPerServing ? recipe.perServingFat : recipe.totalFat),
                         "g"
                     )
                 }

@@ -2,6 +2,14 @@ import Foundation
 import SwiftData
 
 enum WorkoutDayService {
+    static func delete(_ set: ExerciseSet, from workout: WorkoutEntry, in context: ModelContext) {
+        if workout.sets.count <= 1 {
+            context.delete(workout)
+        } else {
+            context.delete(set)
+        }
+    }
+
     /// Keeps at most one workout of `kind` on the day without deleting a different workout type.
     static func enforceSingleWorkout(
         kind: WorkoutKind,

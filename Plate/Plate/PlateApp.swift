@@ -30,6 +30,9 @@ struct PlateApp: App {
             ContentView()
                 .task {
                     SeedData.seedIfNeeded(context: sharedModelContainer.mainContext)
+                    MealNutritionSnapshotService.backfillMissingRecipeSnapshots(
+                        in: sharedModelContainer.mainContext
+                    )
                 }
         }
         .modelContainer(sharedModelContainer)

@@ -279,7 +279,7 @@ struct TodayView: View {
     }
 
     private func itemName(_ item: MealItem) -> String {
-        item.recipe?.name ?? item.ingredient?.name ?? item.estimatedName ?? "—"
+        item.historicalName ?? "—"
     }
 
     private func mealOrder(_ type: MealType) -> Int {

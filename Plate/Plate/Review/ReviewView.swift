@@ -238,7 +238,7 @@ struct ReviewView: View {
     /// One point per day with a reading, within the selected range, plus a 7-day moving average.
     private var weightPoints: [WeightPoint] {
         let cal = Calendar.current
-        let cutoff = cal.date(byAdding: .day, value: -range.days, to: cal.startOfDay(for: .now)) ?? .distantPast
+        let cutoff = ReviewWindow.startDate(days: range.days, today: .now, calendar: cal)
         let inRange = weights
             .filter { $0.date >= cutoff }
             .sorted { $0.date < $1.date }
@@ -262,7 +262,7 @@ struct ReviewView: View {
     private func topSetProgress(for exercise: String?) -> [WeightPoint] {
         guard let exercise else { return [] }
         let cal = Calendar.current
-        let cutoff = cal.date(byAdding: .day, value: -range.days, to: cal.startOfDay(for: .now)) ?? .distantPast
+        let cutoff = ReviewWindow.startDate(days: range.days, today: .now, calendar: cal)
         var maxByDay: [Date: Double] = [:]
         for workout in workouts where workout.kind == .strength && workout.date >= cutoff {
             let day = cal.startOfDay(for: workout.date)

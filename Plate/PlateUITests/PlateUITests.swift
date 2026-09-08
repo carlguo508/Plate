@@ -55,6 +55,57 @@ final class PlateUITests: XCTestCase {
     }
 
     @MainActor
+    func testSavedStrengthSetRemainsVisibleAfterReopening() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let trainingTab = app.tabBars.buttons["训练"]
+        XCTAssertTrue(trainingTab.waitForExistence(timeout: 5))
+        trainingTab.tap()
+        if !app.navigationBars["训练"].waitForExistence(timeout: 3) {
+            trainingTab.tap()
+        }
+        XCTAssertTrue(app.navigationBars["训练"].waitForExistence(timeout: 5))
+        let strengthButton = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "力量训练")
+        ).firstMatch
+        XCTAssertTrue(strengthButton.waitForExistence(timeout: 10))
+        strengthButton.tap()
+        XCTAssertTrue(app.navigationBars["力量记录"].waitForExistence(timeout: 5))
+
+        let exerciseName = "回显测试动作"
+        let exerciseField = app.textFields["new-set-exercise"]
+        XCTAssertTrue(exerciseField.waitForExistence(timeout: 5))
+        exerciseField.tap()
+        exerciseField.typeText(exerciseName)
+
+        let weightField = app.textFields["new-set-weight"]
+        weightField.tap()
+        weightField.typeText("60")
+        let repsField = app.textFields["new-set-reps"]
+        repsField.tap()
+        repsField.typeText("8")
+        app.buttons["add-set"].tap()
+
+        XCTAssertTrue(app.staticTexts[exerciseName].waitForExistence(timeout: 5))
+        app.buttons["完成"].tap()
+        XCTAssertTrue(app.navigationBars["力量记录"].waitForNonExistence(timeout: 5))
+        trainingTab.tap()
+        if !app.navigationBars["训练"].waitForExistence(timeout: 3) {
+            trainingTab.tap()
+        }
+        XCTAssertTrue(app.navigationBars["训练"].waitForExistence(timeout: 5))
+        let reopenButton = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "力量训练")
+        ).firstMatch
+        XCTAssertTrue(reopenButton.waitForExistence(timeout: 5))
+        reopenButton.tap()
+        XCTAssertTrue(app.staticTexts[exerciseName].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.textFields["saved-set-weight"].firstMatch.value as? String, "60")
+        XCTAssertEqual(app.textFields["saved-set-reps"].firstMatch.value as? String, "8")
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             XCUIApplication().launch()

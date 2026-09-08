@@ -1,6 +1,12 @@
 import Foundation
 
 enum NutritionFormat {
+    /// Round-trippable text for editable numeric fields. Unlike display formatting, this must
+    /// not alter stored values when a user opens an editor and saves without changing them.
+    static func editableNumber(_ value: Double) -> String {
+        String(value)
+    }
+
     /// "165" — calories, integer rounded
     static func kcal(_ value: Double) -> String {
         String(Int(value.rounded()))

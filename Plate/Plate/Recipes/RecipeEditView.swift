@@ -177,8 +177,8 @@ struct RecipeEditView: View {
         if let calories = existing.manualCaloriesPerServing,
            let protein = existing.manualProteinPerServing {
             mode = .quick
-            caloriesText = String(format: "%.0f", calories)
-            proteinText = String(format: "%.0f", protein)
+            caloriesText = NutritionFormat.editableNumber(calories)
+            proteinText = NutritionFormat.editableNumber(protein)
         } else {
             mode = .detailed
         }

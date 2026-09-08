@@ -15,7 +15,7 @@ enum RecipeDeletionService {
 
     private static func snapshot(_ item: MealItem) {
         guard let recipe = item.recipe, let servings = item.servings else { return }
-        item.estimatedName = recipe.name
+        item.estimatedName = item.estimatedName ?? recipe.name
         item.estimatedDescription = servings == 1 ? "1 份" : String(format: "%.1f 份", servings)
         item.estimatedCalories = item.estimatedCalories ?? recipe.perServingCalories * servings
         item.estimatedProtein = item.estimatedProtein ?? recipe.perServingProtein * servings

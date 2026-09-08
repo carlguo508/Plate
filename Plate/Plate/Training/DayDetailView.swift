@@ -206,15 +206,14 @@ struct StrengthLogSheet: View {
         self.date = date
         let dayStart = Calendar.current.startOfDay(for: date)
         let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? date
-        let strengthKind = WorkoutKind.strength
         _workouts = Query(filter: #Predicate<WorkoutEntry> {
-            $0.date >= dayStart && $0.date < dayEnd && $0.kind == strengthKind
+            $0.date >= dayStart && $0.date < dayEnd
         })
     }
 
     @Query(sort: \WorkoutEntry.date, order: .reverse) private var allWorkouts: [WorkoutEntry]
 
-    private var workout: WorkoutEntry? { workouts.first }
+    private var workout: WorkoutEntry? { workouts.first { $0.kind == .strength } }
 
     /// Most recent strength session strictly before this day — the source for "repeat last".
     private var previousStrength: WorkoutEntry? {
@@ -249,6 +248,7 @@ struct StrengthLogSheet: View {
                                             .keyboardType(.decimalPad)
                                             .multilineTextAlignment(.trailing)
                                             .frame(maxWidth: .infinity)
+                                            .accessibilityIdentifier("saved-set-weight")
                                         Text(WeightPreference.current.label)
                                             .foregroundStyle(.secondary)
                                         Text("×")
@@ -257,8 +257,9 @@ struct StrengthLogSheet: View {
                                             .keyboardType(.numberPad)
                                             .multilineTextAlignment(.trailing)
                                             .frame(width: 52)
+                                            .accessibilityIdentifier("saved-set-reps")
                                         Button(role: .destructive) {
-                                            context.delete(set)
+                                            WorkoutDayService.delete(set, from: workout, in: context)
                                             try? context.save()
                                         } label: {
                                             Image(systemName: "trash")
@@ -285,16 +286,20 @@ struct StrengthLogSheet: View {
                         exerciseName = picked
                     }
                     TextField("动作（如 卧推）", text: $exerciseName)
+                        .accessibilityIdentifier("new-set-exercise")
                     HStack {
                         TextField("重量", text: $weightText)
                             .keyboardType(.decimalPad)
+                            .accessibilityIdentifier("new-set-weight")
                         Text(WeightPreference.current.label).foregroundStyle(.secondary)
                         TextField("次数", text: $repsText)
                             .keyboardType(.numberPad)
+                            .accessibilityIdentifier("new-set-reps")
                         Text("reps").foregroundStyle(.secondary)
                     }
                     Button("加入") { addSet() }
                         .disabled(!canAdd)
+                        .accessibilityIdentifier("add-set")
                 }
             }
             .navigationTitle("力量记录")

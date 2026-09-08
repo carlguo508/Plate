@@ -51,12 +51,23 @@ final class MealItem {
     init(recipe: Recipe, servings: Double) {
         self.recipe = recipe
         self.servings = servings
+        self.estimatedName = recipe.name
         // A meal log is historical data. Snapshot nutrition at logging time so later edits to
         // the reusable recipe do not silently rewrite past intake and trend charts.
         self.estimatedCalories = recipe.perServingCalories * servings
         self.estimatedProtein = recipe.perServingProtein * servings
         self.estimatedCarbs = recipe.perServingCarbs * servings
         self.estimatedFat = recipe.perServingFat * servings
+    }
+
+    init(recipe: Recipe, servings: Double, preservingNutritionFrom source: MealItem) {
+        self.recipe = recipe
+        self.servings = servings
+        self.estimatedName = source.estimatedName ?? recipe.name
+        self.estimatedCalories = source.calories
+        self.estimatedProtein = source.protein
+        self.estimatedCarbs = source.carbs
+        self.estimatedFat = source.fat
     }
 
     init(ingredient: Ingredient, grams: Double) {
@@ -99,6 +110,7 @@ final class MealItem {
     var protein: Double { estimatedProtein ?? nutrient(\Recipe.perServingProtein, \Ingredient.proteinPer100g) }
     var carbs: Double { estimatedCarbs ?? nutrient(\Recipe.perServingCarbs, \Ingredient.carbsPer100g) }
     var fat: Double { estimatedFat ?? nutrient(\Recipe.perServingFat, \Ingredient.fatPer100g) }
+    var historicalName: String? { estimatedName ?? recipe?.name ?? ingredient?.name }
 
     private func nutrient(
         _ recipeKeyPath: KeyPath<Recipe, Double>,

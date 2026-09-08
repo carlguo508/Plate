@@ -26,7 +26,7 @@ enum MealCopyService {
 
     private static func copyItem(_ source: MealItem) -> MealItem? {
         if let recipe = source.recipe, let servings = source.servings {
-            return MealItem(recipe: recipe, servings: servings)
+            return MealItem(recipe: recipe, servings: servings, preservingNutritionFrom: source)
         }
         if let ingredient = source.ingredient, let grams = source.grams {
             return MealItem(ingredient: ingredient, grams: grams)

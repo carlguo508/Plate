@@ -220,7 +220,7 @@ private struct MealItemRow: View {
     let item: MealItem
 
     private var name: String {
-        item.recipe?.name ?? item.ingredient?.name ?? item.estimatedName ?? "—"
+        item.historicalName ?? "—"
     }
 
     private var quantityText: String {
