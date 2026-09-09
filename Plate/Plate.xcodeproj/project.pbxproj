@@ -400,6 +400,7 @@
 				DEVELOPMENT_TEAM = W8YW3UZF4J;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "用于拍摄并记录每餐食物照片。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于选择并记录每餐食物照片。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -435,6 +436,7 @@
 				DEVELOPMENT_TEAM = W8YW3UZF4J;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "用于拍摄并记录每餐食物照片。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于选择并记录每餐食物照片。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
