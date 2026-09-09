@@ -301,6 +301,55 @@ struct ServiceTests {
         #expect(templates.isEmpty)
     }
 
+    @Test func strengthRoutinesProvideGroupedThreeSetDefaultsAndHonorSavedOverrides() throws {
+        let push = StrengthRoutine.push.defaultTemplate
+        #expect(push.name == "练胸")
+        #expect(Set(push.sets.map(\.exerciseName)) == Set(["卧推", "上斜哑铃卧推", "肩推", "侧平举", "绳索下压"]))
+        #expect(push.sets.count == 15)
+        #expect(push.sets.allSatisfy { $0.weightKg == 0 })
+
+        let custom = WorkoutTemplate(
+            name: "胸",
+            sets: [WorkoutTemplateSet(exerciseName: "双杠臂屈伸", weightKg: 10, reps: 8)]
+        )
+        #expect(StrengthRoutine.push.template(from: [custom]) == custom)
+        #expect(StrengthRoutine.pull.muscleGroups == "背 · 二头")
+        #expect(StrengthRoutine.legs.muscleGroups == "腿")
+    }
+
+    @Test func hidingIngredientKeepsHistoricalObjectAndAddingCreatesCustomIngredient() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let original = Ingredient(
+            name: "鸡胸肉",
+            category: .protein,
+            caloriesPer100g: 165,
+            proteinPer100g: 31,
+            carbsPer100g: 0,
+            fatPer100g: 3.6,
+            isBuiltIn: true
+        )
+        context.insert(original)
+        try context.save()
+
+        IngredientLibraryService.hide(original, in: context)
+        #expect(original.hiddenAt != nil)
+        #expect(original.name == "鸡胸肉")
+
+        let added = IngredientLibraryService.add(
+            name: " 牛腱肉 ",
+            caloriesPer100g: 180,
+            proteinPer100g: 30,
+            carbsPer100g: 0,
+            fatPer100g: 6,
+            defaultUnitGrams: nil,
+            in: context
+        )
+        #expect(added?.name == "牛腱肉")
+        #expect(added?.isBuiltIn == false)
+        #expect(added?.hiddenAt == nil)
+    }
+
     @Test func manualMealSourceStoresOnlyKnownNutrition() {
         let item = MealItemSource.manual(name: "Chipotle 鸡肉碗", calories: 720, protein: 45).makeMealItem()
         #expect(item.historicalName == "Chipotle 鸡肉碗")

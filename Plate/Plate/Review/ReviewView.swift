@@ -134,18 +134,17 @@ struct ReviewView: View {
     // MARK: - Weight trend
 
     private var weightChart: some View {
-        let unit = WeightPreference.current
         return Chart {
             ForEach(weightPoints) { point in
                 LineMark(
                     x: .value("日期", point.date, unit: .day),
-                    y: .value("体重", WeightConvert.display(point.kg, in: unit)),
+                    y: .value("体重（kg）", point.kg),
                     series: .value("线", "实测")
                 )
                 .foregroundStyle(.green.opacity(0.4))
                 PointMark(
                     x: .value("日期", point.date, unit: .day),
-                    y: .value("体重", WeightConvert.display(point.kg, in: unit))
+                    y: .value("体重（kg）", point.kg)
                 )
                 .foregroundStyle(.green.opacity(0.4))
                 .symbolSize(20)
@@ -154,7 +153,7 @@ struct ReviewView: View {
                 if let avg = point.movingAvgKg {
                     LineMark(
                         x: .value("日期", point.date, unit: .day),
-                        y: .value("7日均值", WeightConvert.display(avg, in: unit)),
+                        y: .value("7日均值（kg）", avg),
                         series: .value("线", "7日均值")
                     )
                     .foregroundStyle(.green)

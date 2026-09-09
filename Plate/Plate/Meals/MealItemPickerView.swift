@@ -768,35 +768,66 @@ private struct ServingsSheet: View {
 }
 
 private struct IngredientPickList: View {
+    @Environment(\.modelContext) private var context
     @Query(sort: \Ingredient.name) private var ingredients: [Ingredient]
     @State private var search = ""
     @State private var selected: Ingredient?
+    @State private var showingAddIngredient = false
+    @State private var pendingAddedIngredient: Ingredient?
 
     let onPick: (MealItemSource) -> Void
 
     private var filtered: [Ingredient] {
-        guard !search.isEmpty else { return ingredients }
-        return ingredients.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        let visible = ingredients.filter { $0.hiddenAt == nil }
+        guard !search.isEmpty else { return visible }
+        return visible.filter { $0.name.localizedCaseInsensitiveContains(search) }
     }
 
     var body: some View {
-        List(filtered) { ing in
-            Button { selected = ing } label: {
-                HStack {
-                    Text(ing.name)
-                    Spacer()
-                    Text("\(NutritionFormat.kcal(ing.caloriesPer100g)) kcal/100g")
-                        .font(.caption).foregroundStyle(.secondary)
+        List {
+            ForEach(filtered) { ing in
+                Button { selected = ing } label: {
+                    HStack {
+                        Text(ing.name)
+                        Spacer()
+                        Text("\(NutritionFormat.kcal(ing.caloriesPer100g)) kcal/100g")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .onDelete(perform: hideIngredients)
         }
-        .searchable(text: $search)
+        .searchable(text: $search, prompt: "搜索食材")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showingAddIngredient = true
+                } label: {
+                    Label("新增食材", systemImage: "plus")
+                }
+                .accessibilityIdentifier("add-ingredient")
+            }
+        }
         .sheet(item: $selected) { ing in
             IngredientQuantitySheet(ingredient: ing) { source in
                 onPick(source)
             }
             .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showingAddIngredient, onDismiss: {
+            selected = pendingAddedIngredient
+            pendingAddedIngredient = nil
+        }) {
+            AddIngredientSheet { ingredient in
+                pendingAddedIngredient = ingredient
+            }
+        }
+    }
+
+    private func hideIngredients(at offsets: IndexSet) {
+        for index in offsets {
+            IngredientLibraryService.hide(filtered[index], in: context)
         }
     }
 }

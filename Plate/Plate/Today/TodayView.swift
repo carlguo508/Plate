@@ -160,7 +160,7 @@ struct TodayView: View {
             } label: {
                 if let w = todaysWeight {
                     HStack(spacing: 8) {
-                        Text("\(WeightConvert.formatted(w.weightKg, in: WeightPreference.current)) \(WeightPreference.current.label)")
+                        Text("\(WeightConvert.formatted(w.weightKg, in: .kg)) kg")
                             .font(.title3).fontWeight(.semibold)
                         Text("今日已记").font(.caption).foregroundStyle(.secondary)
                     }
@@ -177,7 +177,7 @@ struct TodayView: View {
                 Button {
                     reuseWeight(latestPriorWeight)
                 } label: {
-                    Text("沿用 \(WeightConvert.formatted(latestPriorWeight.weightKg, in: WeightPreference.current))")
+                    Text("沿用 \(WeightConvert.formatted(latestPriorWeight.weightKg, in: .kg)) kg")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -411,8 +411,6 @@ private struct WeightLogSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var weightText: String = ""
 
-    private var unit: WeightUnit { WeightPreference.current }
-
     var body: some View {
         NavigationStack {
             Form {
@@ -422,7 +420,8 @@ private struct WeightLogSheet: View {
                             .keyboardType(.decimalPad)
                             .font(.title2)
                             .monospacedDigit()
-                        Text(unit.label).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("body-weight-kg")
+                        Text("kg").foregroundStyle(.secondary)
                     }
                     HStack(spacing: 12) {
                         adjustButton(systemName: "minus", delta: -0.1)
@@ -432,11 +431,11 @@ private struct WeightLogSheet: View {
                 if existing == nil, let suggested {
                     Section {
                         Button {
-                            weightText = WeightConvert.formatted(suggested.weightKg, in: unit)
+                            weightText = WeightConvert.formatted(suggested.weightKg, in: .kg)
                             save()
                         } label: {
                             Label(
-                                "沿用上次 \(WeightConvert.formatted(suggested.weightKg, in: unit)) \(unit.label)",
+                                "沿用上次 \(WeightConvert.formatted(suggested.weightKg, in: .kg)) kg",
                                 systemImage: "arrow.uturn.backward.circle"
                             )
                         }
@@ -449,9 +448,9 @@ private struct WeightLogSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 if weightText.isEmpty, let existing {
-                    weightText = WeightConvert.formatted(existing.weightKg, in: unit)
+                    weightText = WeightConvert.formatted(existing.weightKg, in: .kg)
                 } else if weightText.isEmpty, let suggested {
-                    weightText = WeightConvert.formatted(suggested.weightKg, in: unit)
+                    weightText = WeightConvert.formatted(suggested.weightKg, in: .kg)
                 }
             }
             .toolbar {
@@ -480,11 +479,10 @@ private struct WeightLogSheet: View {
 
     private func save() {
         guard let input = Double(weightText), input > 0 else { return }
-        let kg = WeightConvert.toKg(input, from: unit)
         if let existing {
-            existing.weightKg = kg
+            existing.weightKg = input
         } else {
-            let entry = BodyWeightEntry(date: .now, weightKg: kg)
+            let entry = BodyWeightEntry(date: .now, weightKg: input)
             context.insert(entry)
         }
         try? context.save()

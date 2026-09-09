@@ -16,6 +16,8 @@ final class Ingredient {
     /// One natural unit in grams (e.g. 1 egg ≈ 50g). `nil` means this ingredient is only sensibly measured by mass.
     var defaultUnitGrams: Double?
     var isBuiltIn: Bool
+    /// Hidden ingredients stay attached to historical meals and recipes but no longer appear in pickers.
+    var hiddenAt: Date?
     var createdAt: Date
 
     init(
@@ -27,6 +29,7 @@ final class Ingredient {
         fatPer100g: Double,
         defaultUnitGrams: Double? = nil,
         isBuiltIn: Bool = false,
+        hiddenAt: Date? = nil,
         createdAt: Date = .now
     ) {
         self.name = name
@@ -37,6 +40,7 @@ final class Ingredient {
         self.fatPer100g = fatPer100g
         self.defaultUnitGrams = defaultUnitGrams
         self.isBuiltIn = isBuiltIn
+        self.hiddenAt = hiddenAt
         self.createdAt = createdAt
     }
 }
