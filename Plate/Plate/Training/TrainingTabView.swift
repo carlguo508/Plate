@@ -4,7 +4,7 @@ import SwiftData
 struct TrainingTabView: View {
     @Query(sort: \WorkoutEntry.date, order: .reverse) private var workouts: [WorkoutEntry]
     @State private var logDate = Calendar.current.startOfDay(for: .now)
-    @State private var showingStrengthLog = false
+    @State private var strengthRequest: StrengthLogRequest?
     @State private var showingCardioLog = false
     @State private var weightUnit = WeightPreference.current
 
@@ -42,15 +42,48 @@ struct TrainingTabView: View {
                         }
                     }
 
-                    Button {
-                        logDate = Calendar.current.startOfDay(for: .now)
-                        showingStrengthLog = true
-                    } label: {
-                        Label(
-                            todaysWorkouts.contains(where: { $0.kind == .strength }) ? "继续力量训练" : "开始力量训练",
-                            systemImage: "dumbbell.fill"
-                        )
-                        .fontWeight(.semibold)
+                    if todaysWorkouts.contains(where: { $0.kind == .strength }) {
+                        Button {
+                            let today = Calendar.current.startOfDay(for: .now)
+                            logDate = today
+                            strengthRequest = StrengthLogRequest(date: today)
+                        } label: {
+                            Label("继续力量训练", systemImage: "dumbbell.fill")
+                                .fontWeight(.semibold)
+                        }
+                        .accessibilityIdentifier("continue-strength")
+                    } else {
+                        ForEach(StrengthRoutine.allCases) { routine in
+                            Button {
+                                let today = Calendar.current.startOfDay(for: .now)
+                                logDate = today
+                                strengthRequest = StrengthLogRequest(
+                                    date: today,
+                                    starterTemplate: routine.template(from: WorkoutTemplateStore.load())
+                                )
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: routine == .legs ? "figure.strengthtraining.traditional" : "dumbbell.fill")
+                                        .frame(width: 24)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(routine.title)
+                                            .fontWeight(.semibold)
+                                        Text(routine.muscleGroups)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .accessibilityIdentifier("start-routine-\(routine.rawValue)")
+                        }
+                        Button {
+                            let today = Calendar.current.startOfDay(for: .now)
+                            logDate = today
+                            strengthRequest = StrengthLogRequest(date: today)
+                        } label: {
+                            Label("自定义训练", systemImage: "plus")
+                        }
+                        .accessibilityIdentifier("start-custom-strength")
                     }
 
                     Button {
@@ -68,9 +101,10 @@ struct TrainingTabView: View {
                     } else {
                         ForEach(recentWorkouts) { workout in
                             Button {
-                                logDate = Calendar.current.startOfDay(for: workout.date)
+                                let workoutDate = Calendar.current.startOfDay(for: workout.date)
+                                logDate = workoutDate
                                 if workout.kind == .strength {
-                                    showingStrengthLog = true
+                                    strengthRequest = StrengthLogRequest(date: workoutDate)
                                 } else {
                                     showingCardioLog = true
                                 }
@@ -83,10 +117,10 @@ struct TrainingTabView: View {
                 }
             }
             .navigationTitle("训练")
-            .sheet(isPresented: $showingStrengthLog, onDismiss: {
+            .sheet(item: $strengthRequest, onDismiss: {
                 weightUnit = WeightPreference.current
-            }) {
-                StrengthLogSheet(date: logDate)
+            }) { request in
+                StrengthLogSheet(date: request.date, starterTemplate: request.starterTemplate)
             }
             .sheet(isPresented: $showingCardioLog) {
                 CardioLogSheet(
@@ -129,4 +163,10 @@ struct TrainingTabView: View {
         }
         .padding(.vertical, 3)
     }
+}
+
+private struct StrengthLogRequest: Identifiable {
+    let id = UUID()
+    let date: Date
+    var starterTemplate: WorkoutTemplate? = nil
 }

@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-/// One bodyweight reading. Stored in kilograms (canonical); display honors `WeightPreference`.
+/// One bodyweight reading. Body weight is always entered, stored, and displayed in kilograms.
 /// Convention: at most one entry per calendar day — logging again the same day updates it.
 @Model
 final class BodyWeightEntry {

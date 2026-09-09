@@ -3,16 +3,20 @@ import SwiftData
 
 /// Two-step modal: pick an ingredient, then enter quantity. Calls `onPick` with the result.
 struct IngredientPickerView: View {
+    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Ingredient.name) private var ingredients: [Ingredient]
     @State private var searchText = ""
     @State private var selected: Ingredient?
+    @State private var showingAddIngredient = false
+    @State private var pendingAddedIngredient: Ingredient?
 
     let onPick: (Ingredient, _ grams: Double?, _ count: Int?) -> Void
 
     private var filtered: [Ingredient] {
-        guard !searchText.isEmpty else { return ingredients }
-        return ingredients.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        let visible = ingredients.filter { $0.hiddenAt == nil }
+        guard !searchText.isEmpty else { return visible }
+        return visible.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
     var body: some View {
@@ -32,6 +36,7 @@ struct IngredientPickerView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                .onDelete(perform: hideIngredients)
             }
             .searchable(text: $searchText, prompt: "搜索食材")
             .navigationTitle("选择食材")
@@ -39,6 +44,13 @@ struct IngredientPickerView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showingAddIngredient = true
+                    } label: {
+                        Label("新增食材", systemImage: "plus")
+                    }
                 }
             }
             .sheet(item: $selected) { ing in
@@ -48,6 +60,20 @@ struct IngredientPickerView: View {
                 }
                 .presentationDetents([.medium])
             }
+            .sheet(isPresented: $showingAddIngredient, onDismiss: {
+                selected = pendingAddedIngredient
+                pendingAddedIngredient = nil
+            }) {
+                AddIngredientSheet { ingredient in
+                    pendingAddedIngredient = ingredient
+                }
+            }
+        }
+    }
+
+    private func hideIngredients(at offsets: IndexSet) {
+        for index in offsets {
+            IngredientLibraryService.hide(filtered[index], in: context)
         }
     }
 }

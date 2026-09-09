@@ -193,6 +193,7 @@ struct DayDetailView: View {
 
 struct StrengthLogSheet: View {
     let date: Date
+    let starterTemplate: WorkoutTemplate?
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
@@ -203,11 +204,14 @@ struct StrengthLogSheet: View {
     @State private var templates: [WorkoutTemplate]
     @State private var templateName = ""
     @State private var showingTemplateName = false
+    @State private var suggestedTemplateName = ""
+    @State private var appliedStarterTemplate = false
 
     @Query private var workouts: [WorkoutEntry]
 
-    init(date: Date) {
+    init(date: Date, starterTemplate: WorkoutTemplate? = nil) {
         self.date = date
+        self.starterTemplate = starterTemplate
         _weightUnit = State(initialValue: WeightPreference.current)
         _templates = State(initialValue: WorkoutTemplateStore.load())
         let dayStart = Calendar.current.startOfDay(for: date)
@@ -241,8 +245,28 @@ struct StrengthLogSheet: View {
                     .onChange(of: weightUnit, changeWeightUnit)
                 }
                 if workout?.sets.isEmpty ?? true {
+                    Section("选择今天练什么") {
+                        ForEach(StrengthRoutine.allCases) { routine in
+                            Button {
+                                apply(routine.template(from: templates))
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(routine.title)
+                                            .foregroundStyle(.primary)
+                                        Text(routine.muscleGroups)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "plus.circle.fill")
+                                }
+                            }
+                            .accessibilityIdentifier("routine-\(routine.rawValue)")
+                        }
+                    }
                     if !templates.isEmpty {
-                        Section("从模板开始") {
+                        Section("我的模板") {
                             ForEach(templates) { template in
                                 Button {
                                     apply(template)
@@ -267,7 +291,7 @@ struct StrengthLogSheet: View {
                 } else {
                     Section {
                         Button {
-                            templateName = ""
+                            templateName = suggestedTemplateName
                             showingTemplateName = true
                         } label: {
                             Label("把本次保存为模板", systemImage: "bookmark")
@@ -372,6 +396,12 @@ struct StrengthLogSheet: View {
             } message: {
                 Text("以后开始力量训练时，可以一键载入这些动作、组数和重量。")
             }
+            .task {
+                guard !appliedStarterTemplate else { return }
+                appliedStarterTemplate = true
+                guard let starterTemplate, workout?.sets.isEmpty ?? true else { return }
+                apply(starterTemplate)
+            }
         }
     }
 
@@ -459,6 +489,7 @@ struct StrengthLogSheet: View {
     }
 
     private func apply(_ template: WorkoutTemplate) {
+        suggestedTemplateName = template.name
         WorkoutDayService.enforceSingleWorkout(kind: .strength, on: date, in: context)
         let entry = workout ?? WorkoutEntry.strength(date: date)
         if workout == nil { context.insert(entry) }
