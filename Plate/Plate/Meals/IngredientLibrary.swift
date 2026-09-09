@@ -50,7 +50,10 @@ struct AddIngredientSheet: View {
 
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && (Double(calories) ?? -1) >= 0
+            && [calories, protein, carbs, fat].allSatisfy { value in
+                guard let number = Double(value) else { return false }
+                return number >= 0
+            }
     }
 
     var body: some View {
@@ -67,7 +70,7 @@ struct AddIngredientSheet: View {
                 Section {
                     nutritionField("每个约重（可选）", text: $unitGrams, unit: "g", identifier: "ingredient-unit-grams")
                 } footer: {
-                    Text("营养数据按每 100 g 填写。填了单个重量后，记录时也可以按个数加入。")
+                    Text("热量和三项营养数据都按每 100 g 填写；确实为零时请填 0。填了单个重量后，记录时也可以按个数加入。")
                 }
             }
             .navigationTitle("新增食材")
@@ -106,12 +109,18 @@ struct AddIngredientSheet: View {
     }
 
     private func save() {
+        guard
+            let calories = Double(calories),
+            let protein = Double(protein),
+            let carbs = Double(carbs),
+            let fat = Double(fat)
+        else { return }
         guard let ingredient = IngredientLibraryService.add(
             name: name,
-            caloriesPer100g: Double(calories) ?? 0,
-            proteinPer100g: Double(protein) ?? 0,
-            carbsPer100g: Double(carbs) ?? 0,
-            fatPer100g: Double(fat) ?? 0,
+            caloriesPer100g: calories,
+            proteinPer100g: protein,
+            carbsPer100g: carbs,
+            fatPer100g: fat,
             defaultUnitGrams: Double(unitGrams),
             in: context
         ) else { return }

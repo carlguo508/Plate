@@ -212,6 +212,16 @@ final class PlateUITests: XCTestCase {
         let caloriesField = app.textFields["ingredient-calories"]
         caloriesField.tap()
         caloriesField.typeText("180")
+        XCTAssertFalse(app.buttons["save-ingredient"].isEnabled)
+        let proteinField = app.textFields["ingredient-protein"]
+        proteinField.tap()
+        proteinField.typeText("30")
+        let carbsField = app.textFields["ingredient-carbs"]
+        carbsField.tap()
+        carbsField.typeText("0")
+        let fatField = app.textFields["ingredient-fat"]
+        fatField.tap()
+        fatField.typeText("6")
         app.buttons["save-ingredient"].tap()
 
         XCTAssertTrue(app.navigationBars["数量"].waitForExistence(timeout: 5))
